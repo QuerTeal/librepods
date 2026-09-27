@@ -146,11 +146,15 @@ class AACPManager(private val device: AppleDevice) {
                             }
 
                         } else if (bytesRead == -1) {
-                            Log.i("AirPodsService", "socket closed (bytesRead = -1)")
+                            // isConnected can stay true after the remote end closes the channel, so without breaking
+                            // this spins on read() returning -1 until something else closes the socket
+                            Log.i(TAG, "socket closed (bytesRead = -1), stopping read loop")
+                            break
                         }
                     } catch (e: Exception) {
                         Log.i(TAG, "Error reading data, we have probably disconnected.")
                         e.printStackTrace()
+                        break
                     }
                 }
             }
