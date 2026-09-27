@@ -308,6 +308,8 @@ class LibrePodsService: Service() {
                     }
                 }
 
+                // createDevice() already registered observers for this device; cancel them so each state change is handled once
+                deviceJobs[MacAddress(bluetoothDevice.address)]?.forEach { it.cancel() }
                 deviceJobs[MacAddress(bluetoothDevice.address)] = mutableListOf()
 
                 deviceJobs[MacAddress(bluetoothDevice.address)]?.add(observeAppleState(device))
