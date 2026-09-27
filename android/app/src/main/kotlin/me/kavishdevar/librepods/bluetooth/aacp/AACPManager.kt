@@ -1184,6 +1184,14 @@ class AACPManager(private val device: AppleDevice) {
                         // unsigned: a signed read turns anything >= 128 bpm negative and drops it
                         val heartRate = payload[1].toInt() and 0xFF
 
+                        // bit 0 of the last byte is set for the first few samples after the sensor starts (payload[2],
+                        // which looks like a confidence value, is also very low then); those readings are unreliable,
+                        // e.g. 169 bpm at rest, so skip them and stay in WAITING until the sensor settles
+                        if (payload[17].toInt() and 0x01 != 0) {
+                            Log.d(TAG, "skipping heart rate sample while the sensor is acquiring: ${payload.toHexString()}")
+                            return
+                        }
+
                         // same as healthconnect's datatype. 300 isn't possible anyway, but whatever
                         if (heartRate !in 1..300) {
                             Log.w(
