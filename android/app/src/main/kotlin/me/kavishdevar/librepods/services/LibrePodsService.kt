@@ -679,7 +679,9 @@ class LibrePodsService: Service() {
 
                     Log.d(TAG, "updating island window")
                     if (islandWindow?.isVisible == true) {
-                        islandWindow?.updateBattery(state.battery)
+                        CoroutineScope(Dispatchers.Main).launch {
+                            islandWindow?.updateBattery(state.battery)
+                        }
                     }
 
                     Log.d(TAG, "updating notification")
