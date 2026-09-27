@@ -1181,7 +1181,8 @@ class AACPManager(private val device: AppleDevice) {
                     val payload = data.command.payload.toByteArray()
                     val timestamp = Clock.System.now()
                     if (payload.size == 18) {
-                        val heartRate = payload[1].toInt()
+                        // unsigned: a signed read turns anything >= 128 bpm negative and drops it
+                        val heartRate = payload[1].toInt() and 0xFF
 
                         // same as healthconnect's datatype. 300 isn't possible anyway, but whatever
                         if (heartRate !in 1..300) {
@@ -1202,7 +1203,7 @@ class AACPManager(private val device: AppleDevice) {
 
                         Log.i(
                             TAG,
-                            "hr: $heartRate bpm"
+                            "hr: $heartRate bpm, payload: ${payload.toHexString()}"
                         )
 
                         val heartRateSample = HeartRateSample(
