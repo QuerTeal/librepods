@@ -1273,6 +1273,12 @@ class LibrePodsService: Service() {
                 device.connectAudio()
                 justEnabledA2dp = true
 
+                // the heart rate sensor only streams while worn; a request made while the buds were in the case
+                // (e.g. on connect) doesn't start delivering once they are put in, so request it again now
+                if (device is AppleDevice && device.settings.value.hrmAlertEnabled) {
+                    device.startHr()
+                }
+
                 if (MediaController.getMusicActive()) {
                     MediaController.userPlayedTheMedia = true
                 }
