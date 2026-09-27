@@ -46,6 +46,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import me.kavishdevar.librepods.LibrePodsApplication
@@ -329,15 +330,18 @@ class LibrePodsService: Service() {
                     // loadInitialState() can overwrite what the first packets set and the observers miss those changes.
                     // This also keeps the blocking socket connect off the main thread (this runs from a broadcast receiver).
                     device.connect()
+                    // connect() returns right away if another caller (e.g. the device list) is already connecting,
+                    // so wait for that attempt to finish before using the connection
+                    val connected = device.connectionState.first { it != ConnectionState.CONNECTING } == ConnectionState.CONNECTED
 
                     Log.i(
                         TAG,
-                        "Device connected: ${device.macAddress.toRedactedString()} (${device.javaClass.simpleName})"
+                        "Device ${if (connected) "connected" else "failed to connect"}: ${device.macAddress.toRedactedString()} (${device.javaClass.simpleName})"
                     )
 
                     _devices.update { it + (device.macAddress to device) }
 
-                    if (device.settings.value.hrmAlertEnabled) {
+                    if (connected && device.settings.value.hrmAlertEnabled) {
                         device.startHr()
                     }
                 } finally {
