@@ -19,6 +19,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
+import android.media.AudioDeviceInfo
 import android.media.AudioManager
 import android.os.BatteryManager
 import android.os.Binder
@@ -81,6 +82,7 @@ import kotlin.time.Duration.Companion.seconds
 import kotlin.time.toJavaInstant
 
 private const val TAG = "LibrePodsService"
+private val A2DP_RECONNECT_TIMEOUT = 15.seconds
 
 @SuppressLint("MissingPermission")
 class LibrePodsService: Service() {
@@ -1263,20 +1265,32 @@ class LibrePodsService: Service() {
                     "User put in at least one component, enabling audio for device ${device.macAddress.toRedactedString()}"
                 )
                 device.enableAudio()
-                device.connectA2dp()
+                // both profiles: disconnectAudio() drops A2DP and the headset profile when all components are taken out
+                device.connectAudio()
                 justEnabledA2dp = true
-
-                device.waitForA2dpConnection(this) {
-                    MediaController.sendPlay()
-                    MediaController.iPausedTheMedia = false
-                }
 
                 if (MediaController.getMusicActive()) {
                     MediaController.userPlayedTheMedia = true
                 }
-                if (new == EarPresence.PARTIAL) {
+
+                if (isA2dpAudioConnected(device.macAddress)) {
                     MediaController.sendPlay()
                     MediaController.iPausedTheMedia = false
+                } else {
+                    // resuming before A2DP is up starts playback on the phone speaker, so wait for it
+                    val receiver = device.waitForA2dpConnection(this) {
+                        MediaController.sendPlay()
+                        MediaController.iPausedTheMedia = false
+                    }
+                    // if A2DP doesn't connect, don't leave the receiver around to resume playback much later
+                    CoroutineScope(Dispatchers.Main).launch {
+                        delay(A2DP_RECONNECT_TIMEOUT)
+                        try {
+                            unregisterReceiver(receiver)
+                        } catch (_: IllegalArgumentException) {
+                            // already unregistered itself after A2DP connected
+                        }
+                    }
                 }
             }
 
@@ -1312,6 +1326,11 @@ class LibrePodsService: Service() {
             }
         }
     }
+
+    private fun isA2dpAudioConnected(macAddress: MacAddress): Boolean =
+        getSystemService(AudioManager::class.java)
+            .getDevices(AudioManager.GET_DEVICES_OUTPUTS)
+            .any { it.type == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP && it.address.equals(macAddress.value, ignoreCase = true) }
 
     private fun processHeartRateSample(heartRateSample: HeartRateSample, interval: Duration, alertThreshold: Int) {
         CoroutineScope(Dispatchers.IO).launch {
