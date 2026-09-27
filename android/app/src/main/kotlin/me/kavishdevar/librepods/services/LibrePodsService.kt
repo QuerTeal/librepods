@@ -75,6 +75,7 @@ import me.kavishdevar.librepods.utils.MediaController
 import me.kavishdevar.librepods.utils.calculateLevel
 import me.kavishdevar.librepods.utils.redactMac
 import java.time.ZoneOffset
+import java.util.concurrent.ConcurrentHashMap
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.toJavaInstant
@@ -93,6 +94,7 @@ class LibrePodsService: Service() {
     val devices = _devices.asStateFlow()
 
     private val deviceJobs = mutableMapOf<MacAddress, MutableList<Job>>()
+    private val devicesBeingConnected: MutableSet<MacAddress> = ConcurrentHashMap.newKeySet()
 
     val irkMap = mutableMapOf<MacAddress, ByteArray>()
     val rpasByPublicMac = mutableMapOf<MacAddress, MutableSet<MacAddress>>()
@@ -273,61 +275,74 @@ class LibrePodsService: Service() {
             return
         }
 
+        // ACL_CONNECTED and ACTION_UUID can both arrive for the same connection; set the device up once at a time
+        if (!devicesBeingConnected.add(device.macAddress)) {
+            Log.d(TAG, "Device already being connected: ${bluetoothDevice.address}")
+            return
+        }
+
         when (device) {
             is AppleDevice -> CoroutineScope(Dispatchers.IO).launch {
-                Log.i(TAG, "Loading device ${device.macAddress.toRedactedString()} from db")
+                try {
+                    Log.i(TAG, "Loading device ${device.macAddress.toRedactedString()} from db")
 
-                appleRepository.load(device.macAddress)?.let { entity ->
-                    val cache = entity.cache
+                    appleRepository.load(device.macAddress)?.let { entity ->
+                        val cache = entity.cache
+                        Log.i(
+                            TAG,
+                            "Loaded cached state for device ${device.macAddress.toRedactedString()}: $cache"
+                        )
+                        val settings = entity.settings
+                        Log.i(
+                            TAG,
+                            "Loaded settings for device ${device.macAddress.toRedactedString()}: $settings"
+                        )
+                        val metadata = entity.metadata
+                        Log.i(
+                            TAG,
+                            "Loaded metadata for device ${device.macAddress.toRedactedString()}: $metadata"
+                        )
+
+                        device.loadInitialState(
+                            state = AppleState().copy(
+                                capabilities = cache.capabilities,
+                                magicKeys = cache.magicKeys,
+                                controlStates = cache.controlStates,
+                            ),
+                            settings = settings,
+                            metadata = metadata
+                        )
+                    }
+
+                    // createDevice() already registered observers for this device; cancel them so each state change is handled once
+                    deviceJobs[MacAddress(bluetoothDevice.address)]?.forEach { it.cancel() }
+                    deviceJobs[MacAddress(bluetoothDevice.address)] = mutableListOf()
+
+                    deviceJobs[MacAddress(bluetoothDevice.address)]?.add(observeAppleState(device))
+                    deviceJobs[MacAddress(bluetoothDevice.address)]?.add(observeAppleSettings(device))
+                    deviceJobs[MacAddress(bluetoothDevice.address)]?.add(observeAppleMetadata(device))
+                    deviceJobs[MacAddress(bluetoothDevice.address)]?.add(observeAppleMicrophoneFrames(device))
+
+                    // connect only after the cached state is loaded and the observers are registered, otherwise
+                    // loadInitialState() can overwrite what the first packets set and the observers miss those changes.
+                    // This also keeps the blocking socket connect off the main thread (this runs from a broadcast receiver).
+                    device.connect()
+
                     Log.i(
                         TAG,
-                        "Loaded cached state for device ${device.macAddress.toRedactedString()}: $cache"
-                    )
-                    val settings = entity.settings
-                    Log.i(
-                        TAG,
-                        "Loaded settings for device ${device.macAddress.toRedactedString()}: $settings"
-                    )
-                    val metadata = entity.metadata
-                    Log.i(
-                        TAG,
-                        "Loaded metadata for device ${device.macAddress.toRedactedString()}: $metadata"
+                        "Device connected: ${device.macAddress.toRedactedString()} (${device.javaClass.simpleName})"
                     )
 
-                    device.loadInitialState(
-                        state = AppleState().copy(
-                            capabilities = cache.capabilities,
-                            magicKeys = cache.magicKeys,
-                            controlStates = cache.controlStates,
-                        ),
-                        settings = settings,
-                        metadata = metadata
-                    )
+                    _devices.update { it + (device.macAddress to device) }
 
                     if (device.settings.value.hrmAlertEnabled) {
                         device.startHr()
                     }
+                } finally {
+                    devicesBeingConnected.remove(device.macAddress)
                 }
-
-                // createDevice() already registered observers for this device; cancel them so each state change is handled once
-                deviceJobs[MacAddress(bluetoothDevice.address)]?.forEach { it.cancel() }
-                deviceJobs[MacAddress(bluetoothDevice.address)] = mutableListOf()
-
-                deviceJobs[MacAddress(bluetoothDevice.address)]?.add(observeAppleState(device))
-                deviceJobs[MacAddress(bluetoothDevice.address)]?.add(observeAppleSettings(device))
-                deviceJobs[MacAddress(bluetoothDevice.address)]?.add(observeAppleMetadata(device))
-                deviceJobs[MacAddress(bluetoothDevice.address)]?.add(observeAppleMicrophoneFrames(device))
             }
         }
-
-        device.connect()
-
-        Log.i(
-            TAG,
-            "Device connected: ${device.macAddress.toRedactedString()} (${device.javaClass.simpleName})"
-        )
-
-        _devices.update { it + (device.macAddress to device) }
     }
 
     private fun onDeviceDisconnected(mac: MacAddress) {
