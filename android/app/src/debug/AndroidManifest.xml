@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <!-- Debug-only UI fixture. Callbacks never reach Bluetooth or AudioManager. -->
+        <activity android:name=".NativeUiPreviewActivity" android:exported="true"
+            android:label="LibrePods UI Preview" android:windowSoftInputMode="adjustResize"
+            android:taskAffinity="me.kavishdevar.librepods.uiPreview" android:excludeFromRecents="true" />
+    </application>
+    <instrumentation android:name=".NativeUiInstrumentation"
+        android:targetPackage="me.kavishdevar.librepods" android:label="Native UI checks" />
+    <instrumentation android:name=".IslandUiInstrumentation"
+        android:targetPackage="me.kavishdevar.librepods" android:label="Island UI checks" />
+    <instrumentation android:name=".ConnectionUiInstrumentation"
+        android:targetPackage="me.kavishdevar.librepods" android:functionalTest="true" />
+    <instrumentation android:name=".FeatureUiInstrumentation"
+        android:targetPackage="me.kavishdevar.librepods" android:functionalTest="true" />
+    <instrumentation android:name=".DeviceSmokeInstrumentation"
+        android:targetPackage="me.kavishdevar.librepods" android:functionalTest="true" />
+    <instrumentation android:name=".SettingsUiInstrumentation"
+        android:targetPackage="me.kavishdevar.librepods" android:functionalTest="true" />
+    <instrumentation android:name=".HandoffInstrumentation"
+        android:targetPackage="me.kavishdevar.librepods" android:functionalTest="true" />
+</manifest>
