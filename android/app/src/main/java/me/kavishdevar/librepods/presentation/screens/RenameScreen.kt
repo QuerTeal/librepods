@@ -35,6 +35,10 @@ import androidx.compose.foundation.text.input.rememberTextFieldState
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.ui.res.stringResource
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
@@ -44,6 +48,9 @@ import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.unit.dp
 import androidx.core.content.edit
 import dev.chrisbanes.haze.materials.ExperimentalHazeMaterialsApi
+import me.kavishdevar.librepods.R
+import me.kavishdevar.librepods.presentation.components.screenBottomPadding
+import me.kavishdevar.librepods.presentation.components.screenTopPadding
 import me.kavishdevar.librepods.presentation.components.StyledInputField
 import me.kavishdevar.librepods.presentation.theme.DesignSystem
 import me.kavishdevar.librepods.presentation.theme.LocalDesignSystem
@@ -64,13 +71,16 @@ fun RenameScreen(viewModel: AirPodsViewModel) {
     }
 
     val m3eEnabled = LocalDesignSystem.current == DesignSystem.Material
-    val topPadding = if (m3eEnabled) 0.dp else WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 84.dp
-    val bottomPadding = if (m3eEnabled) 0.dp else WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 12.dp
+    val topPadding = screenTopPadding(material = 0.dp)
+    val bottomPadding = screenBottomPadding(material = 0.dp)
 
     Column(
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.surfaceContainer)
+            .imePadding()
+            .verticalScroll(rememberScrollState())
+            .padding(top = 8.dp)
             .padding(horizontal = 16.dp)
     ) {
         Spacer(modifier = Modifier.height(topPadding))
@@ -79,13 +89,14 @@ fun RenameScreen(viewModel: AirPodsViewModel) {
         val textFieldState = rememberTextFieldState(initialText = name)
 
         LaunchedEffect(textFieldState.text) {
-            sharedPreferences.edit {putString("name", textFieldState.text as String?)}
+            sharedPreferences.edit {putString("name", textFieldState.text.toString())}
             viewModel.setName(textFieldState.text.toString())
         }
 
         StyledInputField(
             textFieldState,
-            focusRequester
+            focusRequester,
+            label = stringResource(R.string.name)
         )
 
         Spacer(modifier = Modifier.height(bottomPadding))

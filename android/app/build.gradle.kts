@@ -26,6 +26,7 @@ val releaseSigningAvailable = listOf(
 
 kotlin {
     compilerOptions {
+        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_24)
         optIn.add(
             "androidx.compose.material3.ExperimentalMaterial3ExpressiveApi"
         )
@@ -49,7 +50,7 @@ android {
     defaultConfig {
         applicationId = "me.kavishdevar.librepods"
         targetSdk = 37
-        versionCode = 63
+        versionCode = 76
         versionName = appVersionName
     }
     buildTypes {
@@ -75,7 +76,7 @@ android {
             if (releaseSigningAvailable) {
                 signingConfig = signingConfigs.getByName("release")
             }
-            versionNameSuffix = "-debug"
+            versionNameSuffix = "-handofffix.1-debug"
             defaultConfig {
                 minSdk = 33
             }
@@ -94,8 +95,8 @@ android {
         }
     }
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_21
-        targetCompatibility = JavaVersion.VERSION_21
+        sourceCompatibility = JavaVersion.VERSION_24
+        targetCompatibility = JavaVersion.VERSION_24
     }
     buildFeatures {
         compose = true
@@ -123,10 +124,13 @@ android {
 }
 
 dependencies {
+    // SESL9 replaces the matching AndroidX classes, so keep only one implementation per package.
+    implementation("sesl.androidx.appcompat:appcompat:1.8.0+1.0.38-sesl9+rev2")
+    implementation("sesl.com.google.android.material:material:1.14.0+1.0.47-sesl9+rev2")
+    testImplementation("junit:junit:4.13.2")
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.accompanist.permissions)
     implementation(libs.androidx.compose.ui.text.google.fonts)
-    implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.process)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.activity.compose)
@@ -148,6 +152,7 @@ dependencies {
     implementation(libs.aboutlibraries)
     implementation(libs.aboutlibraries.compose.m3)
     implementation(libs.backdrop)
+    implementation(libs.kyant.shapes)
 //    implementation(libs.hilt)
 //    implementation(libs.hilt.compiler)
     compileOnly(libs.libxposed.api)
@@ -158,6 +163,19 @@ dependencies {
     implementation(libs.androidx.navigation3.runtime)
     implementation(libs.androidx.lifecycle.viewmodel.navigation3)
     implementation(libs.androidx.navigationevent)
+
+}
+
+configurations.configureEach {
+    listOf(
+        "androidx.core" to "core", "androidx.core" to "core-ktx",
+        "androidx.appcompat" to "appcompat", "androidx.fragment" to "fragment",
+        "androidx.fragment" to "fragment-ktx", "androidx.drawerlayout" to "drawerlayout",
+        "androidx.coordinatorlayout" to "coordinatorlayout",
+        "androidx.customview" to "customview",
+        "androidx.recyclerview" to "recyclerview", "androidx.viewpager2" to "viewpager2",
+        "com.google.android.material" to "material"
+    ).forEach { (group, module) -> exclude(group = group, module = module) }
 }
 
 aboutLibraries {

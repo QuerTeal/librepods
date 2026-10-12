@@ -70,6 +70,12 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.layout.positionInParent
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.semantics.ProgressBarRangeInfo
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.disabled
+import androidx.compose.ui.semantics.progressBarRangeInfo
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.setProgress
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
@@ -95,12 +101,16 @@ import com.kyant.backdrop.shadow.Shadow
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import me.kavishdevar.librepods.R
+import me.kavishdevar.librepods.presentation.theme.AppleShape
 import me.kavishdevar.librepods.presentation.theme.DesignSystem
 import me.kavishdevar.librepods.presentation.theme.LibrePodsTheme
 import me.kavishdevar.librepods.presentation.theme.LocalDesignSystem
 import me.kavishdevar.librepods.utils.inspectDragGestures
 import kotlin.math.abs
 import kotlin.math.roundToInt
+import me.kavishdevar.librepods.presentation.theme.sfProFamily
+import me.kavishdevar.librepods.presentation.theme.LocalOneUI
+import me.kavishdevar.librepods.presentation.theme.OneUIText
 
 @Composable
 fun rememberMomentumAnimation(
@@ -233,8 +243,13 @@ fun StyledSlider(
     index: Int = 0,
     count: Int = 1
 ) {
+    if (LocalOneUI.current) {
+        OneUISliderBlock(label, value, onValueChange, valueRange, snapPoints, snapThreshold, startIcon, endIcon, startLabel, endLabel, description, enabled)
+        return
+    }
     when (LocalDesignSystem.current) {
         DesignSystem.Material -> {
+            val materialHaptics = LocalHapticFeedback.current
             val defaultShape = when {
                 count == 1 -> RoundedCornerShape(24.dp)
 
@@ -286,39 +301,13 @@ fun StyledSlider(
                                     style = MaterialTheme.typography.bodyMedium
                                 )
                             }
-
-                            if (startLabel != null || endLabel != null) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth()
-                                ) {
-                                    startLabel?.let {
-                                        Text(
-                                            text = it,
-                                            style = MaterialTheme.typography.labelSmall
-                                        )
-                                    }
-
-                                    Spacer(Modifier.weight(1f))
-
-                                    endLabel?.let {
-                                        Text(
-                                            text = it,
-                                            style = MaterialTheme.typography.labelSmall
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    },
-                    supportingContent = {
-                        Column {
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
 
                                 startIcon?.let {
-                                    Text(it, fontFamily = FontFamily(Font(R.font.sf_pro)))
+                                    Text(it, fontFamily = sfProFamily)
                                     Spacer(Modifier.width(12.dp))
                                 }
 
@@ -336,6 +325,8 @@ fun StyledSlider(
                                             } else {
                                                 newValue
                                             }
+                                        val landed = snapped in snapPoints || snapped <= valueRange.start || snapped >= valueRange.endInclusive
+                                        if (landed && snapped != value) materialHaptics.performHapticFeedback(HapticFeedbackType.SegmentTick)
 
                                         onValueChange(snapped)
                                     },
@@ -345,7 +336,31 @@ fun StyledSlider(
 
                                 endIcon?.let {
                                     Spacer(Modifier.width(12.dp))
-                                    Text(it, fontFamily = FontFamily(Font(R.font.sf_pro)))
+                                    Text(it, fontFamily = sfProFamily)
+                                }
+                            }
+
+                            if (startLabel != null || endLabel != null) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    startLabel?.let {
+                                        Text(
+                                            text = it,
+                                            style = MaterialTheme.typography.labelMedium,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+
+                                    Spacer(Modifier.weight(1f))
+
+                                    endLabel?.let {
+                                        Text(
+                                            text = it,
+                                            style = MaterialTheme.typography.labelMedium,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -389,8 +404,28 @@ fun StyledSlider(
             val density = LocalDensity.current
             val haptics = LocalHapticFeedback.current
             var lastDragValue by remember { mutableFloatStateOf(value) }
+            val detent = remember(snapPoints, snapThreshold) { SliderDetent(snapPoints, snapThreshold) }
+            androidx.compose.runtime.SideEffect { detent.synchronize(value) }
+            val accessibleLabel = label ?: description ?: androidx.compose.ui.res.stringResource(R.string.media_volume)
 
             val momentumAnimation = rememberMomentumAnimation(maxScale = 1.5f)
+
+            val accessibilityModifier = Modifier.semantics(mergeDescendants = true) {
+                contentDescription = accessibleLabel
+                progressBarRangeInfo = ProgressBarRangeInfo(value.coerceIn(valueRange), valueRange)
+                if (enabled) {
+                    setProgress { requested ->
+                        if (!requested.isFinite()) false else {
+                            val result = detent.resolve(requested.coerceIn(valueRange))
+                            if (result.value == value) false else {
+                                if (result.entered) haptics.performHapticFeedback(HapticFeedbackType.SegmentTick)
+                                onValueChange(result.value)
+                                true
+                            }
+                        }
+                    }
+                } else disabled()
+            }
 
             val content = @Composable {
                 Box(
@@ -422,7 +457,7 @@ fun StyledSlider(
                                             fontSize = 16.sp,
                                             fontWeight = FontWeight.Normal,
                                             color = labelTextColor,
-                                            fontFamily = FontFamily(Font(R.font.sf_pro))
+                                            fontFamily = sfProFamily
                                         )
                                     )
                                     Text(
@@ -431,7 +466,7 @@ fun StyledSlider(
                                             fontSize = 16.sp,
                                             fontWeight = FontWeight.Normal,
                                             color = labelTextColor,
-                                            fontFamily = FontFamily(Font(R.font.sf_pro))
+                                            fontFamily = sfProFamily
                                         )
                                     )
                                 }
@@ -458,7 +493,7 @@ fun StyledSlider(
                                                 fontSize = 18.sp,
                                                 fontWeight = FontWeight.Normal,
                                                 color = accentColor,
-                                                fontFamily = FontFamily(Font(R.font.sf_pro))
+                                                fontFamily = sfProFamily
                                             ),
                                             modifier = Modifier
                                                 .padding(horizontal = 12.dp)
@@ -481,7 +516,7 @@ fun StyledSlider(
                                     ) {
                                         Box(
                                             Modifier
-                                                .clip(RoundedCornerShape(28.dp))
+                                                .clip(AppleShape(28.dp))
                                                 .background(trackColor)
                                                 .height(6f.dp)
                                                 .fillMaxWidth()
@@ -489,7 +524,7 @@ fun StyledSlider(
 
                                         Box(
                                             Modifier
-                                                .clip(RoundedCornerShape(28.dp))
+                                                .clip(AppleShape(28.dp))
                                                 .background(accentColor)
                                                 .height(6f.dp)
                                                 .layout { measurable, constraints ->
@@ -510,7 +545,7 @@ fun StyledSlider(
                                                 fontSize = 18.sp,
                                                 fontWeight = FontWeight.Normal,
                                                 color = accentColor,
-                                                fontFamily = FontFamily(Font(R.font.sf_pro))
+                                                fontFamily = sfProFamily
                                             ),
                                             modifier = Modifier
                                                 .padding(horizontal = 12.dp)
@@ -598,7 +633,7 @@ fun StyledSlider(
                                                 val trackWidth = trackWidthState.floatValue
                                                 if (trackWidth > 0f) {
                                                     val targetFraction =
-                                                        fraction + delta / trackWidth
+                                                        (lastDragValue - valueRange.start) / (valueRange.endInclusive - valueRange.start) + delta / trackWidth
                                                     val targetValue =
                                                         lerp(
                                                             valueRange.start,
@@ -609,23 +644,10 @@ fun StyledSlider(
                                                                 valueRange.start,
                                                                 valueRange.endInclusive
                                                             )
-                                                    snapPoints.forEach { snap ->
-                                                        if ((lastDragValue < snap && targetValue >= snap) ||
-                                                            (snap in targetValue..<lastDragValue)
-                                                        ) {
-                                                            haptics.performHapticFeedback(
-                                                                HapticFeedbackType.SegmentTick
-                                                            )
-                                                        }
-                                                    }
+                                                    val result = detent.resolve(targetValue)
+                                                    if (result.entered) haptics.performHapticFeedback(HapticFeedbackType.SegmentTick)
                                                     lastDragValue = targetValue
-                                                    val snappedValue =
-                                                        if (snapPoints.isNotEmpty()) snapIfClose(
-                                                            targetValue,
-                                                            snapPoints,
-                                                            snapThreshold,
-                                                        ) else targetValue
-                                                    onValueChange(snappedValue)
+                                                    onValueChange(result.value)
                                                 }
                                             },
                                             Orientation.Horizontal,
@@ -640,7 +662,7 @@ fun StyledSlider(
                                         .then(momentumAnimation.modifier)
                                         .drawBackdrop(
                                             rememberCombinedBackdrop(backdrop, sliderBackdrop),
-                                            { RoundedCornerShape(28.dp) },
+                                            { AppleShape(28.dp) },
                                             highlight = {
                                                 val progress = momentumAnimation.progress
                                                 Highlight.Ambient.copy(alpha = progress)
@@ -687,7 +709,7 @@ fun StyledSlider(
                                             }
                                         )
                                 } else {
-                                    Modifier.background(trackColor, RoundedCornerShape(28.dp))
+                                    Modifier.background(trackColor, AppleShape(28.dp))
                                 }
                             )
                             .size(40f.dp, 24f.dp)
@@ -708,7 +730,7 @@ fun StyledSlider(
                                 fontSize = 14.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = labelTextColor.copy(alpha = 0.6f),
-                                fontFamily = FontFamily(Font(R.font.sf_pro))
+                                fontFamily = sfProFamily
                             ),
                             modifier = Modifier.padding(horizontal = 18.dp, vertical = 4.dp)
                         )
@@ -717,9 +739,10 @@ fun StyledSlider(
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .background(backgroundColor, RoundedCornerShape(28.dp))
+                            .background(backgroundColor, AppleShape(28.dp))
                             .padding(horizontal = 8.dp, vertical = 0.dp)
-                            .heightIn(min = 58.dp),
+                            .heightIn(min = 58.dp)
+                            .then(accessibilityModifier),
                         contentAlignment = Alignment.Center
                     ) {
                         content()
@@ -734,7 +757,7 @@ fun StyledSlider(
                                 color = (if (isSystemInDarkTheme()) Color.White else Color.Black).copy(
                                     alpha = 0.6f
                                 ),
-                                fontFamily = FontFamily(Font(R.font.sf_pro))
+                                fontFamily = sfProFamily
                             ),
                             modifier = Modifier
                                 .padding(horizontal = 18.dp, vertical = 4.dp)
@@ -750,9 +773,62 @@ fun StyledSlider(
                     "StyledSlider",
                     "Description is ignored when independent is false"
                 )
-                content()
+                Box(Modifier.fillMaxWidth().heightIn(min = 48.dp).then(accessibilityModifier),
+                    contentAlignment = Alignment.Center) { content() }
             }
         }
+    }
+}
+
+@Composable
+private fun OneUISliderBlock(
+    label: String?,
+    value: Float,
+    onValueChange: (Float) -> Unit,
+    valueRange: ClosedFloatingPointRange<Float>,
+    snapPoints: List<Float>,
+    snapThreshold: Float,
+    startIcon: String?,
+    endIcon: String?,
+    startLabel: String?,
+    endLabel: String?,
+    description: String?,
+    enabled: Boolean,
+) {
+    Column(modifier = Modifier.padding(vertical = 8.dp)) {
+        label?.let { OneUICategoryHeader(it) }
+        OneUICard {
+            Column(modifier = Modifier.padding(horizontal = OneUIContentInset, vertical = 14.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    startIcon?.let {
+                        Text(it, fontFamily = sfProFamily, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Spacer(Modifier.width(12.dp))
+                    }
+                    OneUISlider(
+                        value = value,
+                        onValueChange = onValueChange,
+                        valueRange = valueRange,
+                        enabled = enabled,
+                        modifier = Modifier.weight(1f),
+                        label = label ?: description,
+                        snapPoints = snapPoints,
+                        snapThreshold = snapThreshold,
+                    )
+                    endIcon?.let {
+                        Spacer(Modifier.width(12.dp))
+                        Text(it, fontFamily = sfProFamily, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+                if (startLabel != null || endLabel != null) {
+                    Row(modifier = Modifier.fillMaxWidth()) {
+                        startLabel?.let { Text(it, style = OneUIText.rowSummary, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                        Spacer(Modifier.weight(1f))
+                        endLabel?.let { Text(it, style = OneUIText.rowSummary, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                    }
+                }
+            }
+        }
+        description?.let { OneUIFooter(it) }
     }
 }
 

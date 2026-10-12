@@ -48,6 +48,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.BlurEffect
@@ -85,6 +86,11 @@ import com.kyant.backdrop.highlight.Highlight
 import com.kyant.backdrop.shadow.InnerShadow
 import kotlinx.coroutines.launch
 import me.kavishdevar.librepods.R
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import me.kavishdevar.librepods.presentation.theme.AppleCapsule
 import me.kavishdevar.librepods.presentation.theme.DesignSystem
 import me.kavishdevar.librepods.presentation.theme.LocalDesignSystem
 import me.kavishdevar.librepods.utils.inspectDragGestures
@@ -103,8 +109,17 @@ fun StyledIconButton(
     backdrop: LayerBackdrop = rememberLayerBackdrop(),
     onClick: () -> Unit,
     enabled: Boolean = true,
-    materialButtonStyle: MaterialButtonStyle = MaterialButtonStyle.Normal
+    materialButtonStyle: MaterialButtonStyle = MaterialButtonStyle.Normal,
+    /** Spoken name; the SF Symbol glyph itself means nothing to TalkBack. */
+    contentDescription: String? = null,
 ) {
+    @Suppress("NAME_SHADOWING")
+    val modifier = if (contentDescription != null) {
+        modifier.clearAndSetSemantics {
+            this.contentDescription = contentDescription
+            role = Role.Button
+        }
+    } else modifier
     when (LocalDesignSystem.current) {
         DesignSystem.Material -> {
             when (materialButtonStyle) {
@@ -212,12 +227,21 @@ half4 main(float2 coord) {
                         onClick()
                     }
                 },
-                shape = RoundedCornerShape(56.dp),
+                shape = AppleCapsule,
                 modifier = modifier
                     .padding(horizontal = 12.dp)
+                    // The glass layer's own blurred shadow gets cut off square at the layer's
+                    // edge; the outline shadow follows the capsule.
+                    .shadow(
+                        elevation = 4.dp,
+                        shape = AppleCapsule,
+                        ambientColor = Color.Black.copy(alpha = 0.12f),
+                        spotColor = Color.Black.copy(alpha = 0.12f)
+                    )
                     .drawBackdrop(
                         backdrop = backdrop,
-                        shape = { RoundedCornerShape(56.dp) },
+                        shape = { AppleCapsule },
+                        shadow = null,
                         highlight = { Highlight.Ambient.copy(alpha = if (isDarkTheme) 1f else 0f) },
                         innerShadow = {
                             if (isDarkTheme) {
@@ -264,7 +288,7 @@ half4 main(float2 coord) {
                             }
                             val progress = progressAnimation.value.coerceIn(0f, 1f)
 
-                            val shape = RoundedCornerShape(56.dp)
+                            val shape = AppleCapsule
                             val outline = shape.createOutline(size, layoutDirection, this)
                             val innerShadowOffset = 4f.dp.toPx()
                             val innerShadowBlurRadius = 4f.dp.toPx()

@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="librepods_sesl_accent">#387AFF</color>
+    <!-- Applied only to the SESL AndroidView bridge; Apple keeps its own theme. -->
+    <style name="Theme.LibrePods.OneUI9" parent="Theme.AppCompat.DayNight.NoActionBar">
+        <item name="colorPrimary">@color/librepods_sesl_accent</item>
+        <item name="colorAccent">@color/librepods_sesl_accent</item>
+        <item name="android:colorAccent">@color/librepods_sesl_accent</item>
+        <item name="android:fontFamily">sans-serif</item>
+        <item name="windowActionModeOverlay">true</item>
+    </style>
+    <style name="Theme.LibrePods.OneUI9.BottomSheet" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+        <item name="colorPrimary">@color/librepods_sesl_accent</item>
+        <item name="colorAccent">@color/librepods_sesl_accent</item>
+        <item name="android:colorAccent">@color/librepods_sesl_accent</item>
+        <item name="android:fontFamily">sans-serif</item>
+        <item name="bottomSheetStyle">@style/Widget.LibrePods.OneUI9.BottomSheet</item>
+    </style>
+    <style name="Widget.LibrePods.OneUI9.BottomSheet" parent="Widget.MaterialComponents.BottomSheet.Modal">
+        <item name="shapeAppearance">@style/ShapeAppearance.LibrePods.OneUI9.BottomSheet</item>
+        <item name="shapeAppearanceOverlay">@style/ShapeAppearance.LibrePods.OneUI9.BottomSheet</item>
+    </style>
+    <style name="Theme.LibrePods.OneUI9.BottomSheetDialog" parent="Theme.MaterialComponents.DayNight.BottomSheetDialog">
+        <item name="bottomSheetStyle">@style/Widget.LibrePods.OneUI9.BottomSheet</item>
+        <item name="colorPrimary">@color/librepods_sesl_accent</item>
+        <item name="colorAccent">@color/librepods_sesl_accent</item>
+    </style>
+    <style name="ShapeAppearance.LibrePods.OneUI9.BottomSheet" parent="">
+        <item name="cornerFamily">rounded</item>
+        <item name="cornerSizeTopLeft">26dp</item>
+        <item name="cornerSizeTopRight">26dp</item>
+        <item name="cornerSizeBottomLeft">0dp</item>
+        <item name="cornerSizeBottomRight">0dp</item>
+    </style>
+</resources>

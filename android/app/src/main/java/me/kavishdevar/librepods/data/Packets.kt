@@ -74,7 +74,7 @@ enum class NoiseControlMode {
 class AirPodsNotifications {
     companion object {
         const val AIRPODS_CONNECTED = "me.kavishdevar.librepods.AIRPODS_CONNECTED"
-        const val AIRPODS_L2CAP_CONNECTED = "me.kavishdevar.librepods.AIRPODS_CONNECTED"
+        const val AIRPODS_L2CAP_CONNECTED = "me.kavishdevar.librepods.AIRPODS_L2CAP_CONNECTED"
         const val AIRPODS_DATA = "me.kavishdevar.librepods.AIRPODS_DATA"
         const val EAR_DETECTION_DATA = "me.kavishdevar.librepods.EAR_DETECTION_DATA"
         const val ANC_DATA = "me.kavishdevar.librepods.ANC_DATA"
@@ -157,6 +157,8 @@ class AirPodsNotifications {
         private var first: Battery = Battery(BatteryComponent.LEFT, 0, BatteryStatus.DISCONNECTED)
         private var second: Battery = Battery(BatteryComponent.RIGHT, 0, BatteryStatus.DISCONNECTED)
         private var case: Battery = Battery(BatteryComponent.CASE, 0, BatteryStatus.DISCONNECTED)
+        private val casePresence = mutableMapOf<Int, Boolean>()
+        private val pendingCaseZero = mutableMapOf<Int, Long>()
 
         fun isBatteryData(data: ByteArray): Boolean {
             if (data.joinToString("") { "%02x".format(it) }.startsWith("040004000400")) {
@@ -173,16 +175,70 @@ class AirPodsNotifications {
         }
 
         fun setBatteryDirect(
-            leftLevel: Int,
+            leftLevel: Int?,
             leftCharging: Boolean,
-            rightLevel: Int,
+            rightLevel: Int?,
             rightCharging: Boolean,
-            caseLevel: Int,
+            caseLevel: Int?,
             caseCharging: Boolean
         ) {
-            first = Battery(BatteryComponent.LEFT, leftLevel, if (leftCharging) BatteryStatus.CHARGING else BatteryStatus.NOT_CHARGING)
-            second = Battery(BatteryComponent.RIGHT, rightLevel, if (rightCharging) BatteryStatus.CHARGING else BatteryStatus.NOT_CHARGING)
-            case = Battery(BatteryComponent.CASE, caseLevel, if (caseCharging) BatteryStatus.CHARGING else BatteryStatus.NOT_CHARGING)
+            fun reading(component: Int, level: Int?, charging: Boolean): Battery =
+                Battery(component, level ?: 0, if (level == null) BatteryStatus.DISCONNECTED
+                    else if (charging) BatteryStatus.CHARGING else BatteryStatus.NOT_CHARGING)
+            first = reading(BatteryComponent.LEFT, leftLevel, leftCharging)
+            second = reading(BatteryComponent.RIGHT, rightLevel, rightCharging)
+            case = reading(BatteryComponent.CASE, caseLevel, caseCharging)
+        }
+
+        /** Merge a verified case advertiser without replacing live AACP earbud readings. */
+        fun updateCaseBattery(level: Int?, charging: Boolean): Boolean {
+            if (level == null || level !in 0..100) return false
+            val next = Battery(BatteryComponent.CASE, level,
+                if (charging) BatteryStatus.CHARGING else BatteryStatus.NOT_CHARGING)
+            if (next == case) return false
+            case = next
+            return true
+        }
+
+        /** A missing bud slot means out of the case, not an empty/disconnected battery. */
+        fun updateFromCase(
+            leftLevel: Int?, leftCharging: Boolean,
+            rightLevel: Int?, rightCharging: Boolean,
+            caseLevel: Int?, caseCharging: Boolean,
+            seenMillis: Long? = null
+        ): Boolean {
+            if (listOf(leftLevel, rightLevel, caseLevel).any { it != null && it !in 0..100 }) return false
+            val previous = getBattery()
+            fun bud(current: Battery, level: Int?, charging: Boolean): Battery {
+                val wasPresent = casePresence[current.component]
+                casePresence[current.component] = level != null
+                if (level != 0 || !charging) pendingCaseZero.remove(current.component)
+                // The tested case reports 0 for about two seconds just after reseating, before
+                // its actual level arrives. Confirm only this implausible drop from a known level;
+                // unknown/previously empty batteries still report real zero immediately.
+                if (seenMillis != null && level == 0 && charging && current.hasReportedLevel() &&
+                    current.level > 0 && (wasPresent != true || pendingCaseZero.containsKey(current.component))) {
+                    val began = pendingCaseZero.getOrPut(current.component) { seenMillis }
+                    if (seenMillis - began < 3000L) return current.copy(status = BatteryStatus.CHARGING)
+                    pendingCaseZero.remove(current.component)
+                }
+                return if (level != null) Battery(current.component, level,
+                    if (charging) BatteryStatus.CHARGING else BatteryStatus.NOT_CHARGING)
+                else if (current.hasReportedLevel()) current.copy(status = BatteryStatus.NOT_CHARGING)
+                else current
+            }
+            first = bud(previous[0], leftLevel, leftCharging)
+            second = bud(previous[1], rightLevel, rightCharging)
+            updateCaseBattery(caseLevel, caseCharging)
+            return previous != getBattery()
+        }
+
+        fun reset() {
+            first = Battery(BatteryComponent.LEFT, 0, BatteryStatus.DISCONNECTED)
+            second = Battery(BatteryComponent.RIGHT, 0, BatteryStatus.DISCONNECTED)
+            case = Battery(BatteryComponent.CASE, 0, BatteryStatus.DISCONNECTED)
+            casePresence.clear()
+            pendingCaseZero.clear()
         }
 
         fun setBattery(data: ByteArray) {

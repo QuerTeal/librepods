@@ -25,6 +25,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import me.kavishdevar.librepods.R
+import me.kavishdevar.librepods.presentation.components.screenBottomPadding
+import me.kavishdevar.librepods.presentation.components.screenTopPadding
 import me.kavishdevar.librepods.bluetooth.AACPManager
 import me.kavishdevar.librepods.presentation.components.StyledList
 import me.kavishdevar.librepods.presentation.components.StyledListItem
@@ -38,8 +40,8 @@ fun CallControlScreen(viewModel: AirPodsViewModel, action: String, onCallControl
     val state by viewModel.uiState.collectAsState()
 
     val m3eEnabled = LocalDesignSystem.current == DesignSystem.Material
-    val topPadding = if (m3eEnabled) 0.dp else WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 84.dp
-    val bottomPadding = if (m3eEnabled) 0.dp else WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 12.dp
+    val topPadding = screenTopPadding(material = 0.dp)
+    val bottomPadding = screenBottomPadding(material = 0.dp)
 
     val scrollState = rememberScrollState()
 

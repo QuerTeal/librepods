@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A battery ring with its percentage underneath, as on iOS. The popup reads each column out as one
+     item ("Left, 80%, charging") and places it so the ring sits under its device. The percentage
+     spans the column so a changing value never needs a relayout. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="@dimen/popup_column_width"
+    android:layout_height="wrap_content"
+    android:layout_gravity="top|start"
+    android:gravity="center_horizontal"
+    android:importantForAccessibility="yes"
+    android:orientation="vertical">
+
+    <me.kavishdevar.librepods.presentation.overlays.BatteryRingView
+        android:id="@+id/ring"
+        android:layout_width="@dimen/popup_ring_size"
+        android:layout_height="@dimen/popup_ring_size"
+        android:importantForAccessibility="no" />
+
+    <TextView
+        android:id="@+id/level"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:firstBaselineToTopHeight="22dp"
+        android:fontFeatureSettings="tnum"
+        android:gravity="center_horizontal"
+        android:importantForAccessibility="no"
+        android:includeFontPadding="false"
+        android:maxLines="1"
+        android:textColor="@color/popup_text"
+        android:textSize="16sp"
+        tools:text="85%" />
+</LinearLayout>

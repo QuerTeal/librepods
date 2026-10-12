@@ -45,6 +45,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.colorResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
@@ -59,6 +60,7 @@ import kotlin.math.cos
 import kotlin.math.min
 import kotlin.math.sin
 import kotlin.math.sqrt
+import me.kavishdevar.librepods.presentation.theme.sfProFamily
 
 @Composable
 fun BatteryIndicator(
@@ -68,10 +70,8 @@ fun BatteryIndicator(
     previousCharging: Boolean = false,
 ) {
     val isDarkTheme = isSystemInDarkTheme()
-    val batteryTextColor = if (isDarkTheme) Color.White else Color.Black
-    val batteryFillColor =
-        if (batteryPercentage > 25) if (isDarkTheme) Color(0xFF2ED158) else Color(0xFF35C759)
-        else if (isDarkTheme) Color(0xFFFC4244) else Color(0xFFfe373C)
+    val batteryTextColor = MaterialTheme.colorScheme.onSurface
+    val batteryFillColor = colorResource(R.color.battery_level)
 
     val initialScale = if (previousCharging) 1f else 0f
     val scaleAnim = remember { Animatable(initialScale) }
@@ -83,7 +83,7 @@ fun BatteryIndicator(
     }
 
     Column(
-        modifier = Modifier.background(MaterialTheme.colorScheme.surfaceContainer).padding(4.dp), // just for haze to work
+        modifier = Modifier.padding(4.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Box(
@@ -177,7 +177,7 @@ fun BatteryIndicator(
             Text(
                 text = "\uDBC0\uDEE6", style = TextStyle(
                     fontSize = 14.sp,
-                    fontFamily = FontFamily(Font(R.font.sf_pro)),
+                    fontFamily = sfProFamily,
                     color = batteryFillColor,
                     textAlign = TextAlign.Center
                 ), modifier = Modifier.scale(scaleAnim.value)
@@ -191,7 +191,7 @@ fun BatteryIndicator(
             color = batteryTextColor,
             style = TextStyle(
                 fontSize = 14.sp,
-                fontFamily = FontFamily(Font(R.font.sf_pro)),
+                fontFamily = sfProFamily,
                 textAlign = TextAlign.Center
             ),
         )

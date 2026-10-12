@@ -78,6 +78,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
@@ -96,11 +97,25 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import me.kavishdevar.librepods.R
+import me.kavishdevar.librepods.presentation.theme.AppleShape
+import me.kavishdevar.librepods.presentation.components.screenBottomPadding
+import me.kavishdevar.librepods.presentation.components.screenTopPadding
+import me.kavishdevar.librepods.presentation.components.MaterialButtonStyle
+import me.kavishdevar.librepods.presentation.components.LocalOneUIOnCard
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.material3.BottomSheetDefaults
+import me.kavishdevar.librepods.presentation.components.StyledButton
+import me.kavishdevar.librepods.presentation.components.StyledSectionHeader
+import me.kavishdevar.librepods.presentation.theme.DesignSystem
+import me.kavishdevar.librepods.presentation.theme.LocalDesignSystem
+import me.kavishdevar.librepods.presentation.theme.LocalOneUI
+import me.kavishdevar.librepods.presentation.components.StyledAlertDialog
 import me.kavishdevar.librepods.utils.LogCollector
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import me.kavishdevar.librepods.presentation.theme.sfProFamily
 
 @Composable
 fun CustomIconButton(
@@ -121,6 +136,7 @@ fun CustomIconButton(
 @Composable
 fun TroubleshootingScreen() {
     val context = LocalContext.current
+    val resources = LocalResources.current
     val scrollState = rememberScrollState()
     val coroutineScope = rememberCoroutineScope()
 
@@ -147,12 +163,18 @@ fun TroubleshootingScreen() {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false)
     var showBottomSheet by remember { mutableStateOf(false) }
 
-    val backgroundColor = if (isSystemInDarkTheme()) Color(0xFF1C1C1E) else Color(0xFFFFFFFF)
-    val textColor = if (isSystemInDarkTheme()) Color.White else Color.Black
-    val accentColor = if (isSystemInDarkTheme()) Color(0xFF007AFF) else Color(0xFF3C6DF5)
-    val buttonBgColor = if (isSystemInDarkTheme()) Color(0xFF333333) else Color(0xFFDDDDDD)
+    val oneUI = LocalOneUI.current
+    val appleLook = LocalDesignSystem.current == DesignSystem.Apple
+    val backgroundColor = MaterialTheme.colorScheme.surface
+    val textColor = MaterialTheme.colorScheme.onSurface
+    val accentColor = MaterialTheme.colorScheme.primary
+    val cardRadius = when {
+        oneUI -> 26.dp
+        appleLook -> 28.dp
+        else -> 24.dp
+    }
+    val cardShape = if (appleLook) AppleShape(cardRadius) else RoundedCornerShape(cardRadius)
 
-    var instructionText by remember { mutableStateOf("") }
     val isDarkTheme = isSystemInDarkTheme()
 
     LaunchedEffect(Unit) {
@@ -176,13 +198,13 @@ fun TroubleshootingScreen() {
                         outputStream.write(logContent.toByteArray())
                     }
                     withContext(Dispatchers.Main) {
-                        Toast.makeText(context, "Log saved successfully", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, resources.getString(R.string.log_saved_successfully), Toast.LENGTH_SHORT).show()
                     }
                 } catch (e: Exception) {
                     withContext(Dispatchers.Main) {
                         Toast.makeText(
                             context,
-                            "Failed to save log: ${e.localizedMessage}",
+                            resources.getString(R.string.failed_to_save_log, e.localizedMessage),
                             Toast.LENGTH_SHORT
                         ).show()
                     }
@@ -191,15 +213,14 @@ fun TroubleshootingScreen() {
         }
     }
 
-    LaunchedEffect(currentStep) {
-        instructionText = when (currentStep) {
-            0 -> "First, let's ensure Xposed module is properly configured. Tap the button below to check Xposed scope settings."
-            1 -> "Please put your AirPods in the case and close it, so they disconnect completely."
-            2 -> "Preparing to collect logs... Please wait."
-            3 -> "Now, open the AirPods case and connect your AirPods. Logs are being collected. Connection will be detected automatically, or you can manually stop logging when you're done."
-            4 -> "Log collection complete! You can now save or share the logs."
-            else -> ""
-        }
+    // Read during composition so it follows both the step and the app language.
+    val instructionText = when (currentStep) {
+        0 -> stringResource(R.string.troubleshooting_step_xposed)
+        1 -> stringResource(R.string.troubleshooting_step_disconnect)
+        2 -> stringResource(R.string.troubleshooting_step_preparing)
+        3 -> stringResource(R.string.troubleshooting_step_collecting)
+        4 -> stringResource(R.string.troubleshooting_step_complete)
+        else -> ""
     }
 
     fun openLogBottomSheet(file: File) {
@@ -215,8 +236,9 @@ fun TroubleshootingScreen() {
     Box(
         modifier = Modifier.fillMaxSize()
     ) {
-        val topPadding = WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 84.dp
-        val bottomPadding = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 12.dp
+        // Only the Apple look draws its toolbar over the content.
+        val topPadding = screenTopPadding(material = 8.dp)
+        val bottomPadding = screenBottomPadding(material = 16.dp)
 
         Column(
             modifier = Modifier
@@ -228,27 +250,13 @@ fun TroubleshootingScreen() {
         ) {
             Spacer(modifier = Modifier.height(topPadding))
 
-            Text(
-                text = stringResource(R.string.saved_logs),
-                style = TextStyle(
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = textColor.copy(alpha = 0.6f),
-                    fontFamily = FontFamily(Font(R.font.sf_pro))
-                ),
-                modifier = Modifier.padding(16.dp, bottom = 4.dp, top = 8.dp)
-            )
-
-            Spacer(modifier = Modifier.height(2.dp))
+            StyledSectionHeader(stringResource(R.string.saved_logs))
 
             if (savedLogs.isEmpty()) {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .background(
-                            backgroundColor,
-                            RoundedCornerShape(28.dp)
-                        )
+                        .background(backgroundColor, cardShape)
                         .padding(16.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
@@ -262,10 +270,7 @@ fun TroubleshootingScreen() {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .background(
-                            backgroundColor,
-                            RoundedCornerShape(28.dp)
-                        )
+                        .background(backgroundColor, cardShape)
                         .padding(horizontal = 16.dp, vertical = 8.dp)
                 ) {
                     Row(
@@ -276,7 +281,7 @@ fun TroubleshootingScreen() {
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = "Total Logs: ${savedLogs.size}",
+                            text = stringResource(R.string.total_logs, savedLogs.size),
                             fontSize = 16.sp,
                             fontWeight = FontWeight.Medium,
                             color = textColor
@@ -289,7 +294,7 @@ fun TroubleshootingScreen() {
                                     contentColor = MaterialTheme.colorScheme.error
                                 )
                             ) {
-                                Text("Delete All")
+                                Text(stringResource(R.string.delete_all))
                             }
                         }
                     }
@@ -345,14 +350,11 @@ fun TroubleshootingScreen() {
                 enter = fadeIn(animationSpec = tween(300)),
                 exit = fadeOut(animationSpec = tween(300))
             ) {
-                Button(
+                StyledButton(
+                    backdrop = rememberLayerBackdrop(),
+                    isInteractive = false,
                     onClick = { showTroubleshootingSteps = true },
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(10.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = buttonBgColor,
-                        contentColor = textColor
-                    ),
                     enabled = !isCollectingLogs
                 ) {
                     Text(stringResource(R.string.collect_logs))
@@ -369,28 +371,15 @@ fun TroubleshootingScreen() {
                 Column {
                     Spacer(modifier = Modifier.height(16.dp))
 
-                    Text(
-                        text = stringResource(R.string.troubleshooting_steps),
-                        style = TextStyle(
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.Light,
-                            color = textColor.copy(alpha = 0.6f),
-                            fontFamily = FontFamily(Font(R.font.sf_pro))
-                        ),
-                        modifier = Modifier.padding(16.dp, bottom = 2.dp, top = 8.dp)
-                    )
-
-                    Spacer(modifier = Modifier.height(2.dp))
+                    StyledSectionHeader(stringResource(R.string.troubleshooting_steps))
 
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .background(
-                                backgroundColor,
-                                RoundedCornerShape(28.dp)
-                            )
+                            .background(backgroundColor, cardShape)
                             .padding(16.dp)
                     ) {
+                      CompositionLocalProvider(LocalOneUIOnCard provides true) {
                         val textAlpha = animateFloatAsState(
                             targetValue = 1f,
                             animationSpec = tween(durationMillis = 300),
@@ -408,7 +397,10 @@ fun TroubleshootingScreen() {
 
                         when (currentStep) {
                             0 -> {
-                                Button(
+                                StyledButton(
+                                    materialButtonStyle = MaterialButtonStyle.Filled,
+                                    backdrop = rememberLayerBackdrop(),
+                                    isInteractive = false,
                                     onClick = {
                                         coroutineScope.launch {
                                             logCollector.openXposedSettings(context)
@@ -417,18 +409,16 @@ fun TroubleshootingScreen() {
                                         }
                                     },
                                     modifier = Modifier.fillMaxWidth(),
-                                    shape = RoundedCornerShape(10.dp),
-                                    colors = ButtonDefaults.buttonColors(
-                                        containerColor = buttonBgColor,
-                                        contentColor = textColor
-                                    )
                                 ) {
-                                    Text("Open Xposed Settings")
+                                    Text(stringResource(R.string.open_xposed_settings))
                                 }
                             }
 
                             1 -> {
-                                Button(
+                                StyledButton(
+                                    materialButtonStyle = MaterialButtonStyle.Filled,
+                                    backdrop = rememberLayerBackdrop(),
+                                    isInteractive = false,
                                     onClick = {
                                         currentStep = 2
                                         isCollectingLogs = true
@@ -480,7 +470,7 @@ fun TroubleshootingScreen() {
                                                         selectedLogFile = it
                                                         Toast.makeText(
                                                             context,
-                                                            "Log saved: ${it.name}",
+                                                            resources.getString(R.string.log_saved_name, it.name),
                                                             Toast.LENGTH_SHORT
                                                         ).show()
                                                     }
@@ -489,7 +479,7 @@ fun TroubleshootingScreen() {
                                                 withContext(Dispatchers.Main) {
                                                     Toast.makeText(
                                                         context,
-                                                        "Error collecting logs: ${e.message}",
+                                                        resources.getString(R.string.error_collecting_logs, e.message),
                                                         Toast.LENGTH_SHORT
                                                     ).show()
                                                     isCollectingLogs = false
@@ -499,13 +489,8 @@ fun TroubleshootingScreen() {
                                         }
                                     },
                                     modifier = Modifier.fillMaxWidth(),
-                                    shape = RoundedCornerShape(10.dp),
-                                    colors = ButtonDefaults.buttonColors(
-                                        containerColor = buttonBgColor,
-                                        contentColor = textColor
-                                    )
                                 ) {
-                                    Text("Continue")
+                                    Text(stringResource(R.string.continue_label))
                                 }
                             }
 
@@ -521,7 +506,7 @@ fun TroubleshootingScreen() {
                                     Spacer(modifier = Modifier.height(8.dp))
 
                                     Text(
-                                        text = if (currentStep == 2) "Preparing..." else "Collecting logs...",
+                                        text = if (currentStep == 2) stringResource(R.string.preparing) else stringResource(R.string.collecting_logs),
                                         fontSize = 14.sp,
                                         color = textColor
                                     )
@@ -529,7 +514,9 @@ fun TroubleshootingScreen() {
                                     if (currentStep == 3) {
                                         Spacer(modifier = Modifier.height(16.dp))
 
-                                        Button(
+                                        StyledButton(
+                                            backdrop = rememberLayerBackdrop(),
+                                            isInteractive = false,
                                             onClick = {
                                                 coroutineScope.launch {
                                                     logCollector.addLogMarker(
@@ -545,21 +532,16 @@ fun TroubleshootingScreen() {
                                                         isCollectingLogs = false
                                                         Toast.makeText(
                                                             context,
-                                                            "Log collection stopped",
+                                                            resources.getString(R.string.log_collection_stopped),
                                                             Toast.LENGTH_SHORT
                                                         ).show()
                                                     }
                                                 }
                                             },
-                                            shape = RoundedCornerShape(10.dp),
-                                            colors = ButtonDefaults.buttonColors(
-                                                containerColor = buttonBgColor,
-                                                contentColor = textColor
-                                            ),
                                             modifier = Modifier
                                                 .fillMaxWidth()
                                         ) {
-                                            Text("Stop Collection")
+                                            Text(stringResource(R.string.stop_collection))
                                         }
                                     }
                                 }
@@ -570,7 +552,9 @@ fun TroubleshootingScreen() {
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.Center
                                 ) {
-                                    Button(
+                                    StyledButton(
+                                        backdrop = rememberLayerBackdrop(),
+                                        isInteractive = false,
                                         onClick = {
                                             selectedLogFile?.let { file ->
                                                 val fileUri = FileProvider.getUriForFile(
@@ -590,16 +574,11 @@ fun TroubleshootingScreen() {
                                                 context.startActivity(
                                                     Intent.createChooser(
                                                         shareIntent,
-                                                        "Share log file"
+                                                        resources.getString(R.string.share_log_file)
                                                     )
                                                 )
                                             }
                                         },
-                                        shape = RoundedCornerShape(10.dp),
-                                        colors = ButtonDefaults.buttonColors(
-                                            containerColor = buttonBgColor,
-                                            contentColor = textColor
-                                        ),
                                         modifier = Modifier.width(150.dp)
                                     ) {
                                         Icon(
@@ -607,12 +586,14 @@ fun TroubleshootingScreen() {
                                             contentDescription = "Share"
                                         )
                                         Spacer(modifier = Modifier.width(8.dp))
-                                        Text("Share")
+                                        Text(stringResource(R.string.share))
                                     }
 
                                     Spacer(modifier = Modifier.width(16.dp))
 
-                                    Button(
+                                    StyledButton(
+                                        backdrop = rememberLayerBackdrop(),
+                                        isInteractive = false,
                                         onClick = {
                                             selectedLogFile?.let { file ->
                                                 saveLauncher.launch(
@@ -620,11 +601,6 @@ fun TroubleshootingScreen() {
                                                 )
                                             }
                                         },
-                                        shape = RoundedCornerShape(10.dp),
-                                        colors = ButtonDefaults.buttonColors(
-                                            containerColor = buttonBgColor,
-                                            contentColor = textColor
-                                        ),
                                         modifier = Modifier.width(150.dp)
                                     ) {
                                         Icon(
@@ -632,83 +608,71 @@ fun TroubleshootingScreen() {
                                             contentDescription = "Save"
                                         )
                                         Spacer(modifier = Modifier.width(8.dp))
-                                        Text("Save")
+                                        Text(stringResource(R.string.save))
                                     }
                                 }
 
                                 Spacer(modifier = Modifier.height(16.dp))
 
-                                Button(
+                                StyledButton(
+                                    materialButtonStyle = MaterialButtonStyle.Filled,
+                                    backdrop = rememberLayerBackdrop(),
+                                    isInteractive = false,
                                     onClick = {
                                         currentStep = 0
                                         showTroubleshootingSteps = false
                                     },
                                     modifier = Modifier.fillMaxWidth(),
-                                    shape = RoundedCornerShape(10.dp),
-                                    colors = ButtonDefaults.buttonColors(
-                                        containerColor = buttonBgColor,
-                                        contentColor = textColor
-                                    )
                                 ) {
-                                    Text("Done")
+                                    Text(stringResource(R.string.done))
                                 }
                             }
                         }
+                      }
                     }
                 }
             }
 
             if (showDeleteDialog && selectedLogFile != null) {
-                AlertDialog(
+                StyledAlertDialog(
                     onDismissRequest = { showDeleteDialog = false },
-                    title = { Text("Delete Log File") },
-                    text = {
-                        Text("Are you sure you want to delete this log file? This action cannot be undone.")
-                    },
-                    confirmButton = {
-                        TextButton(
-                            onClick = {
+                    title = stringResource(R.string.delete_log_file),
+                    text = stringResource(R.string.delete_log_file_confirmation),
+                    confirmText = stringResource(R.string.delete),
+                    dismissText = stringResource(R.string.cancel),
+                    destructive = true,
+                    onConfirm = {
                                 selectedLogFile?.let { file ->
                                     if (file.delete()) {
                                         savedLogs.remove(file)
                                         Toast.makeText(
                                             context,
-                                            "Log file deleted",
+                                            resources.getString(R.string.log_file_deleted),
                                             Toast.LENGTH_SHORT
                                         )
                                             .show()
                                     } else {
                                         Toast.makeText(
                                             context,
-                                            "Failed to delete log file",
+                                            resources.getString(R.string.failed_to_delete_log_file),
                                             Toast.LENGTH_SHORT
                                         ).show()
                                     }
                                 }
                                 showDeleteDialog = false
-                            }
-                        ) {
-                            Text("Delete", color = MaterialTheme.colorScheme.error)
-                        }
-                    },
-                    dismissButton = {
-                        TextButton(onClick = { showDeleteDialog = false }) {
-                            Text("Cancel")
-                        }
                     }
                 )
             }
 
             if (showDeleteAllDialog) {
-                AlertDialog(
+                StyledAlertDialog(
                     onDismissRequest = { showDeleteAllDialog = false },
-                    title = { Text("Delete All Logs") },
-                    text = {
-                        Text("Are you sure you want to delete all log files? This action cannot be undone and will remove ${savedLogs.size} log files.")
-                    },
-                    confirmButton = {
-                        TextButton(
-                            onClick = {
+                    title = stringResource(R.string.delete_all_logs),
+                    text = stringResource(R.string.delete_all_logs_confirmation, savedLogs.size),
+                    confirmText = stringResource(R.string.delete_all),
+                    dismissText = stringResource(R.string.cancel),
+                    destructive = true,
+                    onConfirm = {
                                 coroutineScope.launch(Dispatchers.IO) {
                                     var deletedCount = 0
                                     savedLogs.forEach { file ->
@@ -721,28 +685,19 @@ fun TroubleshootingScreen() {
                                             savedLogs.clear()
                                             Toast.makeText(
                                                 context,
-                                                "Deleted $deletedCount log files",
+                                                resources.getString(R.string.deleted_log_files, deletedCount),
                                                 Toast.LENGTH_SHORT
                                             ).show()
                                         } else {
                                             Toast.makeText(
                                                 context,
-                                                "Failed to delete log files",
+                                                resources.getString(R.string.failed_to_delete_log_files),
                                                 Toast.LENGTH_SHORT
                                             ).show()
                                         }
                                     }
                                 }
                                 showDeleteAllDialog = false
-                            }
-                        ) {
-                            Text("Delete All", color = MaterialTheme.colorScheme.error)
-                        }
-                    },
-                    dismissButton = {
-                        TextButton(onClick = { showDeleteAllDialog = false }) {
-                            Text("Cancel")
-                        }
                     }
                 )
             }
@@ -754,8 +709,12 @@ fun TroubleshootingScreen() {
             ModalBottomSheet(
                 onDismissRequest = { showBottomSheet = false },
                 sheetState = sheetState,
-                containerColor = if (isDarkTheme) Color(0xFF1C1C1E) else Color(0xFFF2F2F7),
-                shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+                containerColor = when {
+                    oneUI -> MaterialTheme.colorScheme.surface
+                    appleLook -> if (isDarkTheme) Color(0xFF1C1C1E) else Color(0xFFF2F2F7)
+                    else -> BottomSheetDefaults.ContainerColor
+                },
+                shape = if (appleLook || oneUI) RoundedCornerShape(topStart = cardRadius, topEnd = cardRadius) else BottomSheetDefaults.ExpandedShape,
                 tonalElevation = 8.dp
             ) {
                 LaunchedEffect(selectedLogFile) {
@@ -766,7 +725,7 @@ fun TroubleshootingScreen() {
                             logContent = try {
                                 selectedLogFile?.readText() ?: ""
                             } catch (e: Exception) {
-                                "Error loading log content: ${e.message}"
+                                resources.getString(R.string.error_loading_log_content, e.message)
                             }
                             isLoadingLogContent = false
                             logContentLoaded = true
@@ -786,20 +745,15 @@ fun TroubleshootingScreen() {
                             .padding(bottom = 12.dp),
                     ) {
                         Text(
-                            text = selectedLogFile?.name ?: "Log Content",
-                            style = TextStyle(
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 20.sp,
-                                fontFamily = FontFamily(Font(R.font.sf_pro))
-                            ),
+                            text = selectedLogFile?.name ?: stringResource(R.string.log_content),
+                            style = MaterialTheme.typography.titleLarge.copy(fontSize = 20.sp, lineHeight = 26.sp, fontWeight = FontWeight.Bold),
                             color = textColor
                         )
                         Text(
                             text = SimpleDateFormat("MMM dd, yyyy HH:mm", Locale.US)
                                 .format(Date(selectedLogFile?.lastModified() ?: 0)),
-                            fontSize = 14.sp,
-                            color = textColor.copy(alpha = 0.7f),
-                            fontFamily = FontFamily(Font(R.font.sf_pro))
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
 
@@ -850,7 +804,9 @@ fun TroubleshootingScreen() {
                             .padding(top = 16.dp),
                         horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        Button(
+                        StyledButton(
+                            backdrop = rememberLayerBackdrop(),
+                            isInteractive = false,
                             onClick = {
                                 selectedLogFile?.let { file ->
                                     val fileUri = FileProvider.getUriForFile(
@@ -866,16 +822,11 @@ fun TroubleshootingScreen() {
                                     context.startActivity(
                                         Intent.createChooser(
                                             shareIntent,
-                                            "Share log file"
+                                            resources.getString(R.string.share_log_file)
                                         )
                                     )
                                 }
                             },
-                            shape = RoundedCornerShape(10.dp),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = buttonBgColor,
-                                contentColor = textColor
-                            ),
                             modifier = Modifier.weight(1f)
                         ) {
                             Icon(
@@ -883,20 +834,17 @@ fun TroubleshootingScreen() {
                                 contentDescription = "Share"
                             )
                             Spacer(modifier = Modifier.width(8.dp))
-                            Text("Share")
+                            Text(stringResource(R.string.share))
                         }
 
-                        Button(
+                        StyledButton(
+                            backdrop = rememberLayerBackdrop(),
+                            isInteractive = false,
                             onClick = {
                                 selectedLogFile?.let { file ->
                                     saveLauncher.launch(file.absolutePath)
                                 }
                             },
-                            shape = RoundedCornerShape(10.dp),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = buttonBgColor,
-                                contentColor = textColor
-                            ),
                             modifier = Modifier.weight(1f)
                         ) {
                             Icon(
@@ -904,7 +852,7 @@ fun TroubleshootingScreen() {
                                 contentDescription = "Save"
                             )
                             Spacer(modifier = Modifier.width(8.dp))
-                            Text("Save")
+                            Text(stringResource(R.string.save))
                         }
                     }
                 }

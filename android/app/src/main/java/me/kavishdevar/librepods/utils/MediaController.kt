@@ -21,6 +21,7 @@
 package me.kavishdevar.librepods.utils
 
 import android.content.SharedPreferences
+import me.kavishdevar.librepods.data.ConversationalAwarenessDefaults
 import android.media.AudioManager
 import android.media.AudioPlaybackConfiguration
 import android.os.Build
@@ -57,36 +58,40 @@ object MediaController {
         Log.d("MediaController", "Cleared pausedForOtherDevice after timeout, resuming normal playback monitoring")
     }
 
-    private var relativeVolume: Boolean = false
-    private var conversationalAwarenessVolume: Int = 2
-    private var conversationalAwarenessPauseMusic: Boolean = false
+    private var relativeVolume: Boolean = ConversationalAwarenessDefaults.RELATIVE_VOLUME
+    private var conversationalAwarenessVolume: Int = ConversationalAwarenessDefaults.VOLUME_PERCENT
+    private var conversationalAwarenessPauseMusic: Boolean = ConversationalAwarenessDefaults.PAUSE_MUSIC
 
     var recentlyLostOwnership: Boolean = false
 
     private var lastPlayWithReplay: Boolean = false
     private var lastPlayTime: Long = 0L
+    private var replayAllowed: () -> Boolean = { false }
+    private var initialized = false
 
-    fun initialize(audioManager: AudioManager, sharedPreferences: SharedPreferences) {
-        if (this::audioManager.isInitialized) {
+    fun initialize(audioManager: AudioManager, sharedPreferences: SharedPreferences,
+                   replayAllowed: () -> Boolean = { false }) {
+        this.replayAllowed = replayAllowed
+        if (initialized) {
             return
         }
         this.audioManager = audioManager
         this.sharedPreferences = sharedPreferences
         Log.d("MediaController", "Initializing MediaController")
-        relativeVolume = sharedPreferences.getBoolean("relative_conversational_awareness_volume", false)
-        conversationalAwarenessVolume = sharedPreferences.getInt("conversational_awareness_volume", (audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC) / 0.4).toInt())
-        conversationalAwarenessPauseMusic = sharedPreferences.getBoolean("conversational_awareness_pause_music", false)
+        relativeVolume = sharedPreferences.getBoolean("relative_conversational_awareness_volume", ConversationalAwarenessDefaults.RELATIVE_VOLUME)
+        conversationalAwarenessVolume = sharedPreferences.getInt("conversational_awareness_volume", ConversationalAwarenessDefaults.VOLUME_PERCENT)
+        conversationalAwarenessPauseMusic = sharedPreferences.getBoolean("conversational_awareness_pause_music", ConversationalAwarenessDefaults.PAUSE_MUSIC)
 
         preferenceChangeListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
             when (key) {
                 "relative_conversational_awareness_volume" -> {
-                    relativeVolume = sharedPreferences.getBoolean("relative_conversational_awareness_volume", false)
+                    relativeVolume = sharedPreferences.getBoolean("relative_conversational_awareness_volume", ConversationalAwarenessDefaults.RELATIVE_VOLUME)
                 }
                 "conversational_awareness_volume" -> {
-                    conversationalAwarenessVolume = sharedPreferences.getInt("conversational_awareness_volume", (audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC) * 0.4).toInt())
+                    conversationalAwarenessVolume = sharedPreferences.getInt("conversational_awareness_volume", ConversationalAwarenessDefaults.VOLUME_PERCENT)
                 }
                 "conversational_awareness_pause_music" -> {
-                    conversationalAwarenessPauseMusic = sharedPreferences.getBoolean("conversational_awareness_pause_music", false)
+                    conversationalAwarenessPauseMusic = sharedPreferences.getBoolean("conversational_awareness_pause_music", ConversationalAwarenessDefaults.PAUSE_MUSIC)
                 }
             }
         }
@@ -94,17 +99,39 @@ object MediaController {
         sharedPreferences.registerOnSharedPreferenceChangeListener(preferenceChangeListener)
 
         audioManager.registerAudioPlaybackCallback(cb, null)
+        initialized = true
+    }
+
+    fun release() {
+        replayAllowed = { false }
+        cancelReplay()
+        handler.removeCallbacksAndMessages(null)
+        if (!initialized) return
+        runCatching { audioManager.unregisterAudioPlaybackCallback(cb) }
+        sharedPreferences.unregisterOnSharedPreferenceChangeListener(preferenceChangeListener)
+        initialVolume?.let { volume ->
+            runCatching { audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, volume, 0) }
+        }
+        initialVolume = null
+        lastKnownIsMusicActive = null
+        iPausedTheMedia = false
+        userPlayedTheMedia = false
+        pausedForOtherDevice = false
+        pausedWhileTakingOver = false
+        recentlyLostOwnership = false
+        initialized = false
     }
 
     val cb = object : AudioManager.AudioPlaybackCallback() {
         @RequiresApi(Build.VERSION_CODES.R)
         override fun onPlaybackConfigChanged(configs: MutableList<AudioPlaybackConfiguration>?) {
             super.onPlaybackConfigChanged(configs)
+            if (!initialized) return
             val now = SystemClock.uptimeMillis()
             val isActive = audioManager.isMusicActive
             Log.d("MediaController", "Playback config changed, iPausedTheMedia: $iPausedTheMedia, isActive: $isActive, pausedForOtherDevice: $pausedForOtherDevice, lastKnownIsMusicActive: $lastKnownIsMusicActive")
 
-            if (!isActive && lastPlayWithReplay && now - lastPlayTime < 2500L) {
+            if (!isActive && lastPlayWithReplay && now - lastPlayTime < 2500L && replayAllowed()) {
                 Log.d("MediaController", "Music paused shortly after play with replay; retrying play")
                 lastPlayWithReplay = false
                 sendPlay()
@@ -256,6 +283,7 @@ object MediaController {
 
     @Synchronized
     fun sendPause(force: Boolean = false) {
+        cancelReplay()
         Log.d("MediaController", "Sending pause with iPausedTheMedia: $iPausedTheMedia, userPlayedTheMedia: $userPlayedTheMedia, isMusicActive: ${audioManager.isMusicActive}, force: $force")
         if ((audioManager.isMusicActive) && (!userPlayedTheMedia || force)) {
             iPausedTheMedia = if (force) audioManager.isMusicActive else true
@@ -279,7 +307,7 @@ object MediaController {
     @Synchronized
     fun sendPlay(replayWhenPaused: Boolean = false, force: Boolean = false) {
         Log.d("MediaController", "Sending play with iPausedTheMedia: $iPausedTheMedia, replayWhenPaused: $replayWhenPaused, force: $force")
-        if (replayWhenPaused) {
+        if (replayWhenPaused && replayAllowed()) {
             lastPlayWithReplay = true
             lastPlayTime = SystemClock.uptimeMillis()
         }
@@ -309,6 +337,8 @@ object MediaController {
             pausedWhileTakingOver = false
         }
     }
+
+    @Synchronized fun cancelReplay() { lastPlayWithReplay = false }
 
     @Synchronized
     fun startSpeaking() {

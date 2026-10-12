@@ -21,6 +21,12 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+    env:
+      GPR_USER: ${{ github.actor }}
+      GPR_KEY: ${{ secrets.SESL_PACKAGES_TOKEN || secrets.GITHUB_TOKEN }}
     outputs:
       short_sha: ${{ steps.vars.outputs.short_sha }}
       app_version: ${{ steps.version.outputs.app_version }}
@@ -32,7 +38,7 @@ jobs:
       - uses: actions/setup-java@v4
         with:
           distribution: zulu
-          java-version: 21
+          java-version: 25
       - uses: gradle/actions/setup-gradle@v4
       - name: Decode keystore
         if: github.event_name != 'pull_request'

@@ -15,6 +15,10 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.listSaver
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.toMutableStateList
+import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import com.kyant.backdrop.backdrops.LayerBackdrop
@@ -25,6 +29,8 @@ import me.kavishdevar.librepods.presentation.components.StyledScaffold
 import me.kavishdevar.librepods.presentation.theme.DesignSystem
 import me.kavishdevar.librepods.presentation.theme.LocalDesignSystem
 import me.kavishdevar.librepods.presentation.viewmodel.AirPodsViewModel
+import androidx.compose.material3.IconButton
+import me.kavishdevar.librepods.presentation.theme.LocalOneUI
 
 @Composable
 fun NavigationRoot(
@@ -34,7 +40,12 @@ fun NavigationRoot(
     onboardingComplete: () -> Unit = {},
     airPodsViewModel: AirPodsViewModel
 ) {
-    val backStack = remember {
+    val backStack = rememberSaveable(
+        saver = listSaver<SnapshotStateList<Screen>, String>(
+            save = { stack -> stack.map(ScreenState::encode) },
+            restore = { routes -> routes.mapNotNull(ScreenState::decode).ifEmpty { listOf(Screen.AirPodsSettings) }.toMutableStateList() }
+        )
+    ) {
         mutableStateListOf(
             when {
                 showOnboarding -> Screen.Onboarding
@@ -49,6 +60,7 @@ fun NavigationRoot(
     val state by airPodsViewModel.uiState.collectAsState()
 
     val m3eEnabled = LocalDesignSystem.current == DesignSystem.Material
+    val oneUI = LocalOneUI.current
 
     val title = when (currentScreen) {
         Screen.Onboarding -> ""
@@ -56,18 +68,20 @@ fun NavigationRoot(
         Screen.Accessibility -> stringResource(R.string.accessibility)
         Screen.AdaptiveStrength -> stringResource(R.string.customize_adaptive_audio)
         Screen.AppSettings -> stringResource(R.string.settings)
+        Screen.Language -> stringResource(R.string.language)
 //        Screen.CameraControl -> stringResource(R.string.camera_control)
         Screen.Equalizer -> stringResource(R.string.equalizer)
         Screen.HeadTracking -> stringResource(R.string.head_tracking)
         Screen.HearingAid -> stringResource(R.string.hearing_aid)
         Screen.HearingAidAdjustments -> stringResource(R.string.adjustments)
         Screen.HearingProtection -> stringResource(R.string.hearing_protection)
-        is Screen.LongPress -> currentScreen.bud
+        is Screen.LongPress -> stringResource(if (currentScreen.bud == "Left") R.string.left else R.string.right)
         Screen.OpenSourceLicenses -> stringResource(R.string.open_source_licenses)
         Screen.Purchase -> stringResource(R.string.unlock_advanced_features)
         Screen.Rename -> stringResource(R.string.name)
         Screen.TransparencyCustomization -> stringResource(R.string.customize_transparency_mode)
         Screen.Troubleshooting -> stringResource(R.string.troubleshooting)
+        Screen.FeatureStatus -> stringResource(R.string.feature_status_title)
         Screen.UpdateHearingTest -> stringResource(R.string.update_hearing_test)
         Screen.VersionInfo -> stringResource(R.string.version)
         is Screen.CallControl -> currentScreen.action
@@ -79,7 +93,14 @@ fun NavigationRoot(
     val actionButtons = when (currentScreen) {
         Screen.AirPodsSettings -> listOf<@Composable (backdrop: LayerBackdrop) -> Unit>(
                 { scaffoldBackdrop ->
-                    if (m3eEnabled) {
+                    if (oneUI) {
+                        IconButton(onClick = { backStack.add(Screen.AppSettings) }) {
+                            Icon(
+                                imageVector = Icons.Outlined.Settings,
+                                contentDescription = stringResource(R.string.settings)
+                            )
+                        }
+                    } else if (m3eEnabled) {
                         FilledTonalIconButton(
                             onClick = { backStack.add(Screen.AppSettings) },
                             modifier = Modifier
@@ -89,7 +110,7 @@ fun NavigationRoot(
                         ) {
                             Icon(
                                 imageVector = Icons.Outlined.Settings,
-                                contentDescription = "settings",
+                                contentDescription = stringResource(R.string.settings),
                                 modifier = Modifier.size(IconButtonDefaults.mediumIconSize)
                             )
                         }
@@ -97,6 +118,7 @@ fun NavigationRoot(
                         StyledIconButton(
                             onClick = { backStack.add(Screen.AppSettings) },
                             icon = "􀍟",
+                            contentDescription = stringResource(R.string.settings),
                             backdrop = scaffoldBackdrop
                         )
                     }
@@ -104,7 +126,16 @@ fun NavigationRoot(
             )
         Screen.HeadTracking -> listOf<@Composable (backdrop: LayerBackdrop) -> Unit>(
             { scaffoldBackdrop ->
-                if (m3eEnabled) {
+                if (oneUI) {
+                    IconButton(
+                        onClick = { if (state.headTrackingActive) airPodsViewModel.stopHeadTracking() else airPodsViewModel.startHeadTracking() }
+                    ) {
+                        Icon(
+                            imageVector = if (state.headTrackingActive) MaterialIcons.pause else Icons.Default.PlayArrow,
+                            contentDescription = stringResource(if (state.headTrackingActive) R.string.pause_tracking else R.string.start_tracking)
+                        )
+                    }
+                } else if (m3eEnabled) {
                     FilledTonalIconToggleButton(
                         checked = state.headTrackingActive,
                         onCheckedChange = { if (it) airPodsViewModel.startHeadTracking() else airPodsViewModel.stopHeadTracking() },
@@ -115,7 +146,7 @@ fun NavigationRoot(
                     ) {
                         Icon(
                             imageVector = if (state.headTrackingActive) MaterialIcons.pause else Icons.Default.PlayArrow,
-                            contentDescription = "Play/Pause",
+                            contentDescription = stringResource(if (state.headTrackingActive) R.string.pause_tracking else R.string.start_tracking),
                             modifier = Modifier.size(IconButtonDefaults.mediumIconSize)
                         )
                     }
@@ -131,6 +162,7 @@ fun NavigationRoot(
                             }
                         },
                         icon = if (state.headTrackingActive) "􀊅" else "􀊃",
+                        contentDescription = stringResource(if (state.headTrackingActive) R.string.pause_tracking else R.string.start_tracking),
                         backdrop = scaffoldBackdrop
                     )
                 }

@@ -1,3 +1,38 @@
+## Building the SESL9 UI branch
+
+This branch uses [tribalfs SESL9](https://github.com/tribalfs/sesl-androidx) for the
+One UI native widgets. Use JDK 24 or newer; Android Studio's JBR 25 was verified.
+The SESL core dependency contains JVM 24 inline code, so both Java and Kotlin
+targets in this project are 24. The Android minimum remains API 33 for FOSS.
+
+GitHub Packages requires a token with `read:packages`. Store credentials in your
+user Gradle file (`~/.gradle/gradle.properties`), outside the repository:
+
+```properties
+gpr.user=YOUR_GITHUB_USERNAME
+gpr.key=YOUR_READ_PACKAGES_TOKEN
+```
+
+CI uses JDK 25 and reads the same credentials from `GPR_USER` / `GPR_KEY`.
+For GitHub Actions, set `SESL_PACKAGES_TOKEN` to a token with `read:packages`
+when the workflow's `GITHUB_TOKEN` cannot read the external SESL packages.
+Local user Gradle properties take precedence; no package token belongs in Git.
+
+From this directory, run:
+
+```powershell
+.\gradlew.bat :app:assembleFossDebug :app:testFossDebugUnitTest :app:lintFossDebug
+```
+
+The APK is `app/build/outputs/apk/foss/debug/app-foss-debug.apk`. Debug builds also
+contain an isolated UI fixture and `NativeUiInstrumentation`; their callbacks
+only change sample state and do not send AirPods commands. On a connected test
+device with the APK installed:
+
+```powershell
+adb shell am instrument -w me.kavishdevar.librepods/.NativeUiInstrumentation
+```
+
 ## Root Requirement
 
 LibrePods *may* require root depending on your device/OS and what features you want access to:

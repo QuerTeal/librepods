@@ -7,4 +7,9 @@ http://developer.android.com/guide/topics/appwidgets/index.html#CreatingLayout
     -->
   <dimen name="widget_margin">0dp</dimen>
 
+  <!-- Connection popup, measured from iPadOS 27 screen recordings (its card is 400pt). -->
+  <dimen name="popup_card_height">400dp</dimen>
+  <dimen name="popup_ring_size">35.5dp</dimen>
+  <dimen name="popup_column_width">88dp</dimen>
+
 </resources>

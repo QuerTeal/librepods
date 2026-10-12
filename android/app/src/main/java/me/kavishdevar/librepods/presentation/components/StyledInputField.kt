@@ -22,11 +22,16 @@ import androidx.compose.foundation.text.input.clearText
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextField
+import androidx.compose.material3.Icon
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.ui.res.stringResource
+import me.kavishdevar.librepods.presentation.theme.LocalOneUI
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
@@ -40,8 +45,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import me.kavishdevar.librepods.R
+import me.kavishdevar.librepods.presentation.theme.AppleShape
+import me.kavishdevar.librepods.presentation.MaterialIcons
 import me.kavishdevar.librepods.presentation.theme.DesignSystem
 import me.kavishdevar.librepods.presentation.theme.LocalDesignSystem
+import me.kavishdevar.librepods.presentation.theme.sfProFamily
 
 
 @Composable
@@ -50,30 +58,51 @@ fun StyledInputField(
     focusRequester: FocusRequester,
     placeholder: String = "",
     singleLine: Boolean = true,
-    forceApple: Boolean = false
+    forceApple: Boolean = false,
+    /** What the field holds; Material shows it as the field's label. */
+    label: String? = null,
 ) {
     val m3eEnabled = LocalDesignSystem.current == DesignSystem.Material && !forceApple
 
-    if(m3eEnabled) {
-        TextField(
+    if (LocalOneUI.current && !forceApple) {
+        OneUICard {
+            OneUITextField(
+                state = inputState,
+                placeholder = placeholder,
+                singleLine = singleLine,
+                focusRequester = focusRequester,
+                label = label,
+                modifier = Modifier.padding(start = OneUIContentInset, end = OneUIContentInset - 6.dp, top = 10.dp, bottom = 16.dp)
+            )
+        }
+    } else if (m3eEnabled) {
+        OutlinedTextField(
             state = inputState,
-            placeholder = {
-                Text(
-                    text = placeholder,
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.8f)
-                )
-            },
+            label = label?.let { { Text(it) } },
+            placeholder = if (placeholder.isNotEmpty()) {
+                { Text(placeholder) }
+            } else null,
+            trailingIcon = if (singleLine && inputState.text.isNotEmpty()) {
+                {
+                    IconButton(onClick = { inputState.clearText() }) {
+                        Icon(MaterialIcons.cancel, contentDescription = stringResource(R.string.clear))
+                    }
+                }
+            } else null,
             lineLimits = if (singleLine) TextFieldLineLimits.SingleLine else TextFieldLineLimits.Default,
+            shape = MaterialTheme.shapes.large,
+            textStyle = MaterialTheme.typography.bodyLarge,
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp)
+                .then(if (singleLine) Modifier else Modifier.heightIn(min = 120.dp))
+                .focusRequester(focusRequester)
         )
     }
     else {
-        val isDarkTheme = isSystemInDarkTheme()
-        val backgroundColor = if (isDarkTheme) Color(0xFF1C1C1E) else Color(0xFFFFFFFF)
-        val textColor = if (isDarkTheme) Color.White else Color.Black
+        val backgroundColor = MaterialTheme.colorScheme.surface
+        val textColor = MaterialTheme.colorScheme.onSurface
+        val hint = placeholder.ifBlank { label.orEmpty() }
+        val clearDescription = stringResource(R.string.clear)
         val minHeight = if (singleLine) 58.dp else 120.dp
         val verticalAlignment = if (singleLine) Alignment.CenterVertically else Alignment.Top
         val hasText = inputState.text.isNotEmpty()
@@ -100,7 +129,7 @@ fun StyledInputField(
                     .heightIn(min = minHeight)
                     .background(
                         backgroundColor,
-                        RoundedCornerShape(28.dp)
+                        AppleShape(28.dp)
                     )
                     .padding(horizontal = 16.dp, vertical = 8.dp)
                     .pointerInput(Unit) {
@@ -115,9 +144,9 @@ fun StyledInputField(
                     textStyle = TextStyle(
                         fontSize = 16.sp,
                         color = textColor,
-                        fontFamily = FontFamily(Font(R.font.sf_pro))
+                        fontFamily = sfProFamily
                     ),
-                    cursorBrush = SolidColor(textColor),
+                    cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
                     decorator = { innerTextField ->
                         Row(
                             modifier = Modifier.padding(top = if (singleLine) 0.dp else 16.dp),
@@ -133,11 +162,11 @@ fun StyledInputField(
                                     contentAlignment = if (singleLine) Alignment.CenterStart else Alignment.TopStart
                                 ) {
                                     Text(
-                                        text = placeholder,
+                                        text = hint,
                                         style = TextStyle(
                                             fontSize = 16.sp,
                                             fontWeight = FontWeight.Light,
-                                            fontFamily = FontFamily(Font(R.font.sf_pro)),
+                                            fontFamily = sfProFamily,
                                             color = textColor.copy(alpha = 0.8f)
                                         ),
                                         modifier = Modifier
@@ -149,6 +178,7 @@ fun StyledInputField(
                             }
                             if (singleLine && !inputState.text.isEmpty()) {
                                 IconButton(
+                                    modifier = Modifier.semantics { contentDescription = clearDescription },
                                     onClick = {
                                         inputState.clearText()
                                     }
@@ -157,10 +187,8 @@ fun StyledInputField(
                                         text = "􀁡",
                                         style = TextStyle(
                                             fontSize = 16.sp,
-                                            fontFamily = FontFamily(Font(R.font.sf_pro)),
-                                            color = if (isDarkTheme) Color.White.copy(alpha = 0.6f) else Color.Black.copy(
-                                                alpha = 0.6f
-                                            )
+                                            fontFamily = sfProFamily,
+                                            color = textColor.copy(alpha = 0.6f)
                                         ),
                                     )
                                 }
@@ -171,6 +199,7 @@ fun StyledInputField(
                         .fillMaxWidth()
                         .padding(start = 8.dp)
                         .focusRequester(focusRequester)
+                        .semantics { label?.let { contentDescription = it } }
                 )
             }
         }

@@ -1,7 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="popup_background">#1C1B1E</color>
+    <color name="popup_background">#1C1C1E</color>
     <color name="popup_text">@color/white</color>
+    <color name="popup_close_background">#12FFFFFF</color>
+    <color name="popup_close_pressed">#33FFFFFF</color>
+    <color name="popup_scrim">#99000000</color>
+    <color name="battery_level">#30D158</color>
     <color name="widget_background">#1C1B1E</color>
     <color name="widget_text">@color/white</color>
     <color name="colorBackground">#0B0B0B</color>

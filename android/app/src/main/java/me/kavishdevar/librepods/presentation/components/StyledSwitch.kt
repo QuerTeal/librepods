@@ -64,6 +64,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import me.kavishdevar.librepods.presentation.theme.AppleCapsule
 import androidx.compose.ui.util.fastCoerceIn
 import androidx.compose.ui.util.lerp
 import com.kyant.backdrop.backdrops.layerBackdrop
@@ -146,7 +147,7 @@ fun StyledSwitch(
         Box(
             modifier = Modifier
                 .layerBackdrop(switchBackdrop)
-                .clip(RoundedCornerShape(trackHeight / 2))
+                .clip(AppleCapsule)
                 .background(animatedTrackColor)
                 .width(trackWidth)
                 .height(trackHeight)
@@ -207,7 +208,7 @@ fun StyledSwitch(
                 ) else Modifier)
                 .drawBackdrop(
                     rememberCombinedBackdrop(backdrop, switchBackdrop),
-                    { RoundedCornerShape(thumbHeight / 2) },
+                    { AppleCapsule },
                     highlight = {
                         val progress = progressAnimation.value
                         Highlight.Ambient.copy(
@@ -246,7 +247,7 @@ fun StyledSwitch(
                     onDrawSurface = {
                         val progress = progressAnimation.value.fastCoerceIn(0f, 1f)
 
-                        val shape = RoundedCornerShape(thumbHeight / 2)
+                        val shape = AppleCapsule
                         val outline = shape.createOutline(size, layoutDirection, this)
                         val innerShadowOffset = 4f.dp.toPx()
                         val innerShadowBlurRadius = 4f.dp.toPx()

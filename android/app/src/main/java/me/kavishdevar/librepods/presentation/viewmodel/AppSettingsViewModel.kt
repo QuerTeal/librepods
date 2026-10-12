@@ -14,11 +14,13 @@ import me.kavishdevar.librepods.BuildConfig
 import me.kavishdevar.librepods.billing.BillingManager
 import me.kavishdevar.librepods.data.XposedRemotePrefProvider
 import kotlin.math.roundToInt
+import me.kavishdevar.librepods.presentation.theme.AppDesign
+import me.kavishdevar.librepods.data.ConversationalAwarenessDefaults
 
 data class AppSettingsUiState(
     val showPhoneBatteryInWidget: Boolean = false,
-    val conversationalAwarenessPauseMusicEnabled: Boolean = false,
-    val relativeConversationalAwarenessVolumeEnabled: Boolean = true,
+    val conversationalAwarenessPauseMusicEnabled: Boolean = ConversationalAwarenessDefaults.PAUSE_MUSIC,
+    val relativeConversationalAwarenessVolumeEnabled: Boolean = ConversationalAwarenessDefaults.RELATIVE_VOLUME,
     val disconnectWhenNotWearing: Boolean = false,
     val takeoverWhenDisconnected: Boolean = false,
     val takeoverWhenIdle: Boolean = false,
@@ -27,7 +29,7 @@ data class AppSettingsUiState(
     val takeoverWhenRingingCall: Boolean = false,
     val takeoverWhenMediaStart: Boolean = false,
     val useAlternateHeadTrackingPackets: Boolean = true,
-    val conversationalAwarenessVolume: Float = 43f,
+    val conversationalAwarenessVolume: Float = ConversationalAwarenessDefaults.VOLUME_PERCENT.toFloat(),
     val showCameraDialog: Boolean = false,
     val cameraPackageValue: String = "",
     val cameraPackageError: String? = null,
@@ -36,8 +38,10 @@ data class AppSettingsUiState(
     val connectionSuccessful: Boolean = false,
     val showBottomSheetPopup: Boolean = true,
     val showIslandPopup: Boolean = true,
+    val quickSettingsDialog: Boolean = false,
     val timeUntilFOSSPremiumExpiry: Long = 0L,
-    val m3eEnabled: Boolean = false
+    val m3eEnabled: Boolean = false,
+    val appDesign: AppDesign = AppDesign.OneUI
 )
 
 class AppSettingsViewModel(application: Application) : AndroidViewModel(application) {
@@ -136,8 +140,8 @@ class AppSettingsViewModel(application: Application) : AndroidViewModel(applicat
         _uiState.update { currentState ->
             currentState.copy(
                 showPhoneBatteryInWidget = sharedPreferences.getBoolean("show_phone_battery_in_widget", false),
-                conversationalAwarenessPauseMusicEnabled = sharedPreferences.getBoolean("conversational_awareness_pause_music", false),
-                relativeConversationalAwarenessVolumeEnabled = sharedPreferences.getBoolean("relative_conversational_awareness_volume", true),
+                conversationalAwarenessPauseMusicEnabled = sharedPreferences.getBoolean("conversational_awareness_pause_music", ConversationalAwarenessDefaults.PAUSE_MUSIC),
+                relativeConversationalAwarenessVolumeEnabled = sharedPreferences.getBoolean("relative_conversational_awareness_volume", ConversationalAwarenessDefaults.RELATIVE_VOLUME),
                 disconnectWhenNotWearing = sharedPreferences.getBoolean("disconnect_when_not_wearing", false),
                 takeoverWhenDisconnected = sharedPreferences.getBoolean("takeover_when_disconnected", false),
                 takeoverWhenIdle = sharedPreferences.getBoolean("takeover_when_idle", false),
@@ -146,13 +150,15 @@ class AppSettingsViewModel(application: Application) : AndroidViewModel(applicat
                 takeoverWhenRingingCall = sharedPreferences.getBoolean("takeover_when_ringing_call", false),
                 takeoverWhenMediaStart = sharedPreferences.getBoolean("takeover_when_media_start", false),
                 useAlternateHeadTrackingPackets = sharedPreferences.getBoolean("use_alternate_head_tracking_packets", true),
-                conversationalAwarenessVolume = sharedPreferences.getInt("conversational_awareness_volume", 43).toFloat(),
+                conversationalAwarenessVolume = sharedPreferences.getInt("conversational_awareness_volume", ConversationalAwarenessDefaults.VOLUME_PERCENT).toFloat(),
                 cameraPackageValue = sharedPreferences.getString("custom_camera_package", "") ?: "",
                 vendorIdHook = xposedRemotePref.getBoolean("vendor_id_hook", false),
                 connectionSuccessful = sharedPreferences.getBoolean("connection_successful", false),
                 showBottomSheetPopup = sharedPreferences.getBoolean("show_bottom_sheet_popup", true),
                 showIslandPopup = sharedPreferences.getBoolean("show_island_popup", true),
-                m3eEnabled = sharedPreferences.getBoolean("m3e_enabled", true)
+                quickSettingsDialog = sharedPreferences.getString("qs_click_behavior", "cycle") == "dialog",
+                m3eEnabled = sharedPreferences.getBoolean("m3e_enabled", true),
+                appDesign = AppDesign.fromPreferences(sharedPreferences)
             )
         }
     }
@@ -248,9 +254,20 @@ class AppSettingsViewModel(application: Application) : AndroidViewModel(applicat
         _uiState.update { it.copy(showBottomSheetPopup = enabled) }
     }
 
+    fun setQuickSettingsDialog(enabled: Boolean) {
+        sharedPreferences.edit { putString("qs_click_behavior", if (enabled) "dialog" else "cycle") }
+        _uiState.update { it.copy(quickSettingsDialog = enabled) }
+    }
+
     fun setShowIslandPopup(enabled: Boolean) {
         sharedPreferences.edit { putBoolean("show_island_popup", enabled) }
         _uiState.update { it.copy(showIslandPopup = enabled) }
+    }
+
+    fun setAppDesign(design: AppDesign) {
+        val available = AppDesign.fromPreferenceValue(design.prefValue)
+        sharedPreferences.edit { putString(AppDesign.PREF_KEY, available.prefValue) }
+        _uiState.update { it.copy(appDesign = available) }
     }
 
     fun setm3eEnabled(enabled: Boolean) {

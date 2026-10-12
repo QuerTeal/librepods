@@ -42,7 +42,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import me.kavishdevar.librepods.R
 
-val sfProFamily = FontFamily(Font(R.font.sf_pro))
 
 val AppleTypography = Typography().run {
     copy(

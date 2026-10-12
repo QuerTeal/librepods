@@ -18,13 +18,7 @@
 
 package me.kavishdevar.librepods.data
 
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 import me.kavishdevar.librepods.bluetooth.ATTHandles
-import java.io.IOException
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
@@ -84,7 +78,9 @@ data class TransparencySettings(
 }
 
 fun parseTransparencySettingsResponse(data: ByteArray): TransparencySettings? {
-    if (data.size < 50) return null // 50 is arbitrary, too lazy to count
+    if (data.size < 100 || (data.size > 100 && data.size < 104)) return null
+    val floats = ByteBuffer.wrap(data).order(ByteOrder.LITTLE_ENDIAN)
+    repeat(if (data.size >= 104) 26 else 25) { if (!floats.float.isFinite()) return null }
     val buffer = ByteBuffer.wrap(data).order(ByteOrder.LITTLE_ENDIAN)
 
     val enabled = buffer.float
@@ -139,43 +135,29 @@ fun parseTransparencySettingsResponse(data: ByteArray): TransparencySettings? {
     )
 }
 
-private var debounceJob: Job? = null
+fun encodeTransparencySettings(settings: TransparencySettings): ByteArray? {
+    if (settings.leftEQ.size != 8 || settings.rightEQ.size != 8) return null
+    val values = settings.leftEQ.toList() + settings.rightEQ.toList() + listOfNotNull(
+        settings.leftAmplification, settings.rightAmplification, settings.leftTone, settings.rightTone,
+        settings.leftAmbientNoiseReduction, settings.rightAmbientNoiseReduction, settings.ownVoiceAmplification)
+    if (values.any { !it.isFinite() }) return null
+    val buffer = ByteBuffer.allocate(if (settings.ownVoiceAmplification != null) 104 else 100)
+        .order(ByteOrder.LITTLE_ENDIAN)
+    buffer.putFloat(if (settings.enabled) 1f else 0f)
+    settings.leftEQ.forEach { buffer.putFloat(it) }
+    buffer.putFloat(settings.leftAmplification)
+    buffer.putFloat(settings.leftTone)
+    buffer.putFloat(if (settings.leftConversationBoost) 1f else 0f)
+    buffer.putFloat(settings.leftAmbientNoiseReduction)
+    settings.rightEQ.forEach { buffer.putFloat(it) }
+    buffer.putFloat(settings.rightAmplification)
+    buffer.putFloat(settings.rightTone)
+    buffer.putFloat(if (settings.rightConversationBoost) 1f else 0f)
+    buffer.putFloat(settings.rightAmbientNoiseReduction)
+    settings.ownVoiceAmplification?.let { buffer.putFloat(it) }
+    return buffer.array()
+}
 
 fun sendTransparencySettings(writer: (ATTHandles, ByteArray) -> Unit, transparencySettings: TransparencySettings) {
-    debounceJob?.cancel()
-    debounceJob = CoroutineScope(Dispatchers.IO).launch {
-        delay(100)
-        try {
-            val buffer = ByteBuffer.allocate(
-                if (transparencySettings.ownVoiceAmplification != null) 104 else 100
-            ).order(ByteOrder.LITTLE_ENDIAN)
-
-            buffer.putFloat(if (transparencySettings.enabled) 1.0f else 0.0f)
-
-            for (eq in transparencySettings.leftEQ) {
-                buffer.putFloat(eq)
-            }
-            buffer.putFloat(transparencySettings.leftAmplification)
-            buffer.putFloat(transparencySettings.leftTone)
-            buffer.putFloat(if (transparencySettings.leftConversationBoost) 1.0f else 0.0f)
-            buffer.putFloat(transparencySettings.leftAmbientNoiseReduction)
-
-            for (eq in transparencySettings.rightEQ) {
-                buffer.putFloat(eq)
-            }
-            buffer.putFloat(transparencySettings.rightAmplification)
-            buffer.putFloat(transparencySettings.rightTone)
-            buffer.putFloat(if (transparencySettings.rightConversationBoost) 1.0f else 0.0f)
-            buffer.putFloat(transparencySettings.rightAmbientNoiseReduction)
-
-            if (transparencySettings.ownVoiceAmplification != null) {
-                buffer.putFloat(transparencySettings.ownVoiceAmplification)
-            }
-
-            val data = buffer.array()
-            writer(ATTHandles.TRANSPARENCY, data)
-        } catch (e: IOException) {
-            e.printStackTrace()
-        }
-    }
+    encodeTransparencySettings(transparencySettings)?.let { writer(ATTHandles.TRANSPARENCY, it) }
 }

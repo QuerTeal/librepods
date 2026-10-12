@@ -220,16 +220,11 @@ class AirPodsPro3: AirPodsBase(
     modelNumber = listOf("A3063", "A3064", "A3065"),
     name = "AirPods Pro 3",
     displayName = "AirPods Pro",
-    // budCaseRes = R.drawable.airpods_pro_3
-    budCaseRes = R.drawable.airpods_pro_2,
-    // budsRes = R.drawable.airpods_pro_3_buds
-    budsRes = R.drawable.airpods_pro_2_buds,
-    // leftBudsRes = R.drawable.airpods_pro_3_left
-    leftBudsRes = R.drawable.airpods_pro_2_left,
-    // rightBudsRes = R.drawable.airpods_pro_3_right
-    rightBudsRes = R.drawable.airpods_pro_2_right,
-    // caseRes = R.drawable.airpods_pro_3_case
-    caseRes = R.drawable.airpods_pro_2_case,
+    budCaseRes = R.drawable.airpods_pro_3,
+    budsRes = R.drawable.airpods_pro_3_buds,
+    leftBudsRes = R.drawable.airpods_pro_3_left,
+    rightBudsRes = R.drawable.airpods_pro_3_right,
+    caseRes = R.drawable.airpods_pro_3_case,
     capabilities = setOf(
         Capability.LISTENING_MODE,
         Capability.CONVERSATION_AWARENESS,

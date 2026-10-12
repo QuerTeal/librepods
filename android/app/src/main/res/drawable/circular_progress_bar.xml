@@ -7,7 +7,7 @@
         android:innerRadiusRatio="3.0"
         android:thickness="6dp"
         android:useLevel="true">
-        <solid android:color="#00D85B" />
+        <solid android:color="@color/battery_level" />
         <corners android:radius="10dp" />
     </shape>
 </rotate>

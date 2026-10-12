@@ -15,6 +15,8 @@ dynamicanimation = "1.1.0"
 aboutLibraries = "14.2.0"
 materialIconsCore = "1.7.8"
 backdrop = "2.0.0-alpha03"
+# The version backdrop itself uses; LibrePods draws iOS continuous corners with it.
+kyantShapes = "1.2.0"
 billing = "8.3.0"
 hilt = "2.59.2"
 xposed = "101.0.0"
@@ -50,6 +52,7 @@ aboutlibraries = { group = "com.mikepenz", name = "aboutlibraries", version.ref 
 aboutlibraries-compose-m3 = { group = "com.mikepenz", name = "aboutlibraries-compose-m3", version.ref = "aboutLibraries" }
 androidx-compose-material-icons-core = { group = "androidx.compose.material", name = "material-icons-core", version.ref = "materialIconsCore" }
 backdrop = { group = "io.github.kyant0", name = "backdrop", version.ref = "backdrop" }
+kyant-shapes = { group = "io.github.kyant0", name = "shapes", version.ref = "kyantShapes" }
 billing = { group = "com.android.billingclient", name = "billing-ktx", version.ref = "billing" }
 hilt = { group = "com.google.dagger", name = "hilt-android", version.ref = "hilt" }
 hilt-compiler = { group = "com.google.dagger", name = "hilt-compiler", version.ref = "hilt" }

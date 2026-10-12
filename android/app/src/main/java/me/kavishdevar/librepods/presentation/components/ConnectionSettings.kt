@@ -29,20 +29,27 @@ import kotlin.io.encoding.ExperimentalEncodingApi
 fun ConnectionSettings(
     automaticEarDetectionEnabled: Boolean,
     onAutomaticEarDetectionChanged: (Boolean) -> Unit,
-    automaticConnectionEnabled: Boolean,
+    automaticConnectionEnabled: Boolean?,
+    automaticConnectionPhase: me.kavishdevar.librepods.bluetooth.SettingPhase? = null,
     onAutomaticConnectionChanged: (Boolean) -> Unit,
 ) {
     StyledList {
         StyledToggle(
             label = stringResource(R.string.ear_detection),
+            description = stringResource(R.string.local_ear_detection_description),
             checked = automaticEarDetectionEnabled,
             onCheckedChange = onAutomaticEarDetectionChanged
         )
 
         StyledToggle(
             label = stringResource(R.string.automatically_connect),
-            description = stringResource(R.string.automatically_connect_description),
-            checked = automaticConnectionEnabled,
+            description = stringResource(when (automaticConnectionPhase) {
+                me.kavishdevar.librepods.bluetooth.SettingPhase.PENDING -> R.string.setting_pending_notice
+                me.kavishdevar.librepods.bluetooth.SettingPhase.FAILED -> R.string.setting_failed_notice
+                else -> if (automaticConnectionEnabled == null) R.string.setting_unknown_notice else R.string.automatically_connect_description
+            }),
+            checked = automaticConnectionEnabled == true,
+            enabled = automaticConnectionEnabled != null && automaticConnectionPhase != me.kavishdevar.librepods.bluetooth.SettingPhase.PENDING,
             onCheckedChange = onAutomaticConnectionChanged
         )
     }

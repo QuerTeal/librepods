@@ -22,6 +22,8 @@ package me.kavishdevar.librepods.presentation.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.ui.semantics.Role
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -42,6 +44,11 @@ import androidx.compose.material3.SegmentedListItem
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material3.Icon
+import androidx.compose.material3.SwitchDefaults
+import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -62,11 +69,20 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
 import me.kavishdevar.librepods.R
+import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.foundation.gestures.draggable
+import androidx.compose.foundation.gestures.rememberDraggableState
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.setValue
+import me.kavishdevar.librepods.presentation.theme.AppleShape
 import me.kavishdevar.librepods.presentation.theme.DesignSystem
 import me.kavishdevar.librepods.presentation.theme.LibrePodsTheme
 import me.kavishdevar.librepods.presentation.theme.LocalDesignSystem
 import me.kavishdevar.librepods.presentation.theme.sectionHeader
 import kotlin.io.encoding.ExperimentalEncodingApi
+import me.kavishdevar.librepods.presentation.theme.sfProFamily
+import me.kavishdevar.librepods.presentation.theme.LocalOneUI
 
 @Composable
 fun StyledToggle(
@@ -78,6 +94,16 @@ fun StyledToggle(
     onCheckedChange: (Boolean) -> Unit,
     header: Boolean = false
 ) {
+    if (LocalOneUI.current) {
+        Column(modifier = Modifier.padding(vertical = 8.dp)) {
+            title?.let { OneUICategoryHeader(it) }
+            OneUICard {
+                OneUISwitchRow(title = label, checked = checked, onCheckedChange = onCheckedChange, enabled = enabled)
+            }
+            description?.let { OneUIFooter(it) }
+        }
+        return
+    }
     val m3eEnabled = LocalDesignSystem.current == DesignSystem.Material
     Column(modifier = Modifier.padding(vertical = 12.dp)) {
         title?.let {
@@ -99,9 +125,9 @@ fun StyledToggle(
                 .fillMaxWidth()
                 .background(
                     if (m3eEnabled) if (header) MaterialTheme.colorScheme.primaryContainer else Color.Transparent else MaterialTheme.colorScheme.surface,
-                    RoundedCornerShape(if (m3eEnabled) (if (header) 64.dp else 16.dp) else 28.dp)
+                    if (m3eEnabled) RoundedCornerShape(if (header) 64.dp else 16.dp) else AppleShape(28.dp)
                 )
-                .clip(RoundedCornerShape(if (m3eEnabled) (if (header) 64.dp else 16.dp) else 28.dp))
+                .clip(if (m3eEnabled) RoundedCornerShape(if (header) 64.dp else 16.dp) else AppleShape(28.dp))
         ) {
             if (m3eEnabled) {
                 StyledToggleContent(
@@ -131,7 +157,7 @@ fun StyledToggle(
                 text = description, style = TextStyle(
                     fontSize = 12.sp,
                     color = MaterialTheme.colorScheme.onBackground.copy(0.6f),
-                    fontFamily = FontFamily(Font(R.font.sf_pro)),
+                    fontFamily = sfProFamily,
                 ), modifier = Modifier.padding(horizontal = 16.dp)
             )
         }
@@ -171,10 +197,21 @@ private fun StyledToggleContent(
     count: Int,
     header: Boolean = false
 ) {
+    if (LocalOneUI.current) {
+        OneUISwitchRow(
+            title = label,
+            summary = description,
+            checked = checked,
+            onCheckedChange = onCheckedChange,
+            enabled = enabled,
+            showDivider = index + 1 != count
+        )
+        return
+    }
     val currentChecked by rememberUpdatedState(checked)
 
     val isDarkTheme = isSystemInDarkTheme()
-    val textColor = if (isDarkTheme) Color.White else Color.Black
+    val textColor = (if (isDarkTheme) Color.White else Color.Black).copy(alpha = if (enabled) 1f else 0.38f)
 
     val haptics = LocalHapticFeedback.current
     val scope = rememberCoroutineScope()
@@ -182,6 +219,11 @@ private fun StyledToggleContent(
     val m3eEnabled = LocalDesignSystem.current == DesignSystem.Material
 
     if (m3eEnabled) {
+        // Haptics only for the user's own changes, not for state the AirPods report.
+        val toggle: (Boolean) -> Unit = { value ->
+            haptics.performHapticFeedback(if (value) HapticFeedbackType.ToggleOn else HapticFeedbackType.ToggleOff)
+            onCheckedChange(value)
+        }
         val defaultShape = when {
             count == 1 -> RoundedCornerShape(24.dp)
 
@@ -209,13 +251,29 @@ private fun StyledToggleContent(
                     selectedShape = RoundedCornerShape(24.dp),
                     hoveredShape = RoundedCornerShape(24.dp),
                 ),
-                onClick = { onCheckedChange(!currentChecked) },
+                onClick = { toggle(!currentChecked) },
                 trailingContent = {
+                    var swipe by remember { mutableFloatStateOf(0f) }
                     Switch(
                         checked = currentChecked,
-                        onCheckedChange = onCheckedChange,
-                        modifier = Modifier.padding(end = if (header) 8.dp else 0.dp),
-                        enabled = enabled
+                        onCheckedChange = toggle,
+                        modifier = Modifier
+                            .padding(end = if (header) 8.dp else 0.dp)
+                            // Swiping across the switch flips it the way of the swipe.
+                            .draggable(
+                                state = rememberDraggableState { delta -> swipe += delta },
+                                orientation = Orientation.Horizontal,
+                                enabled = enabled,
+                                onDragStarted = { swipe = 0f },
+                                onDragStopped = {
+                                    if (swipe > 24f && !currentChecked) toggle(true)
+                                    else if (swipe < -24f && currentChecked) toggle(false)
+                                }
+                            ),
+                        enabled = enabled,
+                        thumbContent = if (currentChecked) {
+                            { Icon(Icons.Filled.Check, contentDescription = null, modifier = Modifier.size(SwitchDefaults.IconSize)) }
+                        } else null
                     )
                 },
                 supportingContent = description?.let {
@@ -259,27 +317,29 @@ private fun StyledToggleContent(
                 modifier = Modifier
                     .fillMaxWidth()
                     .background(
-                        shape = RoundedCornerShape(28.dp),
-                        color = if (isPressed.value) Color(0xFFE0E0E0) else Color.Transparent
+                        shape = AppleShape(28.dp),
+                        color = if (enabled && isPressed.value)
+                            MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f) else Color.Transparent
                     )
                     .padding(16.dp)
-                    .pointerInput(Unit) {
+                    .pointerInput(enabled) {
                         detectTapGestures(
                             onPress = {
-                                isPressed.value = true
+                                isPressed.value = enabled
                                 tryAwaitRelease()
                                 isPressed.value = false
                             }
                         )
                     }
-                    .clickable(
+                    .toggleable(
+                        value = checked,
+                        enabled = enabled,
+                        role = Role.Switch,
                         indication = null,
                         interactionSource = remember { MutableInteractionSource() }
                     ) {
-                        if (enabled) {
-                            scope.launch { haptics.performHapticFeedback(if (!currentChecked) HapticFeedbackType.ToggleOn else HapticFeedbackType.ToggleOff) }
-                            onCheckedChange(!currentChecked)
-                        }
+                        // StyledSwitch gives the toggle haptic when the state changes.
+                        onCheckedChange(it)
                     },
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -299,7 +359,7 @@ private fun StyledToggleContent(
                         Text(
                             text = description,
                             style = MaterialTheme.typography.bodySmall,
-                            color = textColor.copy(0.8f)
+                            color = textColor.copy(alpha = textColor.alpha * 0.8f)
                         )
                     }
                 }

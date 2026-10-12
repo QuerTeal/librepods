@@ -29,23 +29,21 @@ import android.content.Context
 import android.content.SharedPreferences
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.util.Log
 import me.kavishdevar.librepods.utils.BluetoothCryptography
 import javax.crypto.Cipher
 import javax.crypto.spec.SecretKeySpec
 import kotlin.collections.iterator
-import kotlin.io.encoding.Base64
-import kotlin.io.encoding.ExperimentalEncodingApi
 
 /**
  * Manager for Bluetooth Low Energy scanning operations specifically for AirPods
  */
-@OptIn(ExperimentalEncodingApi::class)
 class BLEManager(private val context: Context) {
 
     data class AirPodsStatus(
         val address: String,
-        val lastSeen: Long = System.currentTimeMillis(),
+        val lastSeen: Long = SystemClock.elapsedRealtime(),
         val paired: Boolean = false,
         val model: String = "Unknown",
         val leftBattery: Int? = null,
@@ -56,7 +54,9 @@ class BLEManager(private val context: Context) {
         val isLeftCharging: Boolean = false,
         val isRightCharging: Boolean = false,
         val isCaseCharging: Boolean = false,
-        val lidOpen: Boolean = false,
+        val lidOpen: Boolean? = null,
+        val isCaseAdvertisement: Boolean = false,
+        val caseOpenCounter: Int? = null,
         val color: String = "Unknown",
         val connectionState: String = "Unknown"
     )
@@ -65,10 +65,17 @@ class BLEManager(private val context: Context) {
         return deviceStatusMap.values.maxByOrNull { it.lastSeen }
     }
 
+    fun getMostRecentCaseStatus(): AirPodsStatus? =
+        deviceStatusMap.values.filter { it.isCaseAdvertisement }.maxByOrNull { it.lastSeen }
+
+    fun getMostRecentPodStatus(): AirPodsStatus? =
+        mostRecentPodStatus(deviceStatusMap.values)
+
     interface AirPodsStatusListener {
         fun onDeviceStatusChanged(device: AirPodsStatus, previousStatus: AirPodsStatus?)
         fun onBroadcastFromNewAddress(device: AirPodsStatus)
         fun onLidStateChanged(lidOpen: Boolean)
+        fun onLidStateUnknown() {}
         fun onEarStateChanged(device: AirPodsStatus, leftInEar: Boolean, rightInEar: Boolean)
         fun onBatteryChanged(device: AirPodsStatus)
         fun onDeviceDisappeared()
@@ -80,15 +87,18 @@ class BLEManager(private val context: Context) {
     private val deviceStatusMap = mutableMapOf<String, AirPodsStatus>()
     private val verifiedAddresses = mutableSetOf<String>()
     private val sharedPreferences: SharedPreferences = context.getSharedPreferences("settings", Context.MODE_PRIVATE)
-    private var currentGlobalLidState: Boolean? = null
-    private var lastBroadcastTime: Long = 0
-    private val processedAddresses = mutableSetOf<String>()
-
-    private val lastValidCaseBatteryMap = mutableMapOf<String, Int>()
+    private val lidTracker = LidStateTracker(LID_FRESHNESS_MS)
+    private var trustedIrk: ByteArray? = null
+    private var trustedEncryptionKey: ByteArray? = null
+    private var lastCaseSeenMillis: Long? = null
+    private var lastScanTimestampNanos = 0L
+    private var scanningRequested = false
+    private var scanFailures = 0
     private val modelNames = mapOf(
         0x0E20 to "AirPods Pro",
         0x1420 to "AirPods Pro 2",
         0x2420 to "AirPods Pro 2 (USB-C)",
+        0x2720 to "AirPods Pro 3",
         0x0220 to "AirPods 1",
         0x0F20 to "AirPods 2",
         0x1320 to "AirPods 3",
@@ -114,9 +124,49 @@ class BLEManager(private val context: Context) {
     private val cleanupRunnable = object : Runnable {
         override fun run() {
             cleanupStaleDevices()
-            checkLidStateTimeout()
             cleanupHandler.postDelayed(this, CLEANUP_INTERVAL_MS)
         }
+    }
+    private val lidExpiryRunnable = Runnable {
+        if (lidTracker.expire(SystemClock.elapsedRealtime())) {
+            airPodsStatusListener?.onLidStateUnknown()
+        }
+    }
+    private val scanRetryRunnable = Runnable { if (scanningRequested) startScanning() }
+
+    /** Low duty cycle while the screen is off; nobody can see a popup then. */
+    private var lowPower = false
+    private val lowPowerRunnable = Runnable { applyLowPower(true) }
+
+    /**
+     * Full duty cycle as soon as the screen turns on, so a lid opened now is seen within an
+     * advertising interval or two. Dropping to low power waits a while, which keeps screen toggling
+     * under Android's limit of five scan starts per 30 seconds.
+     */
+    fun setInteractive(interactive: Boolean) {
+        if (Looper.myLooper() != Looper.getMainLooper()) {
+            cleanupHandler.post { setInteractive(interactive) }
+            return
+        }
+        cleanupHandler.removeCallbacks(lowPowerRunnable)
+        if (interactive) applyLowPower(false)
+        else cleanupHandler.postDelayed(lowPowerRunnable, SCREEN_OFF_LOW_POWER_DELAY_MS)
+    }
+
+    @SuppressLint("MissingPermission")
+    private fun applyLowPower(low: Boolean) {
+        if (lowPower == low) return
+        lowPower = low
+        // Sparse advertisements at low duty must not read as the case going quiet. Going back to
+        // full duty, the short window returns with the next advertisement instead of right away,
+        // so a case left open doesn't expire and pop up again just because the screen turned on.
+        if (low) lidTracker.freshnessMillis = LOW_POWER_LID_FRESHNESS_MS
+        val callback = mScanCallback ?: return
+        Log.d(TAG, "Restarting BLE scan in ${if (low) "low power" else "low latency"} mode")
+        try { mBluetoothLeScanner?.stopScan(callback) } catch (_: Exception) { }
+        mScanCallback = null
+        mBluetoothLeScanner = null
+        startScanning()
     }
 
     fun setAirPodsStatusListener(listener: AirPodsStatusListener) {
@@ -125,6 +175,13 @@ class BLEManager(private val context: Context) {
 
     @SuppressLint("MissingPermission")
     fun startScanning() {
+        if (Looper.myLooper() != Looper.getMainLooper()) {
+            cleanupHandler.post { startScanning() }
+            return
+        }
+        scanningRequested = true
+        if (mScanCallback != null) return
+        cleanupHandler.removeCallbacks(scanRetryRunnable)
         try {
             Log.d(TAG, "Starting BLE scanner")
 
@@ -136,11 +193,6 @@ class BLEManager(private val context: Context) {
                 return
             }
 
-            if (mBluetoothLeScanner != null && mScanCallback != null) {
-                mBluetoothLeScanner?.stopScan(mScanCallback)
-                mScanCallback = null
-            }
-
             if (!btAdapter.isEnabled) {
                 Log.d(TAG, "Bluetooth is disabled")
                 return
@@ -149,33 +201,30 @@ class BLEManager(private val context: Context) {
             mBluetoothLeScanner = btAdapter.bluetoothLeScanner
 
             val scanSettings = ScanSettings.Builder()
-                .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
+                .setScanMode(if (lowPower) ScanSettings.SCAN_MODE_LOW_POWER else ScanSettings.SCAN_MODE_LOW_LATENCY)
                 .setMatchMode(ScanSettings.MATCH_MODE_AGGRESSIVE)
                 .setCallbackType(ScanSettings.CALLBACK_TYPE_ALL_MATCHES)
                 .setNumOfMatches(ScanSettings.MATCH_NUM_MAX_ADVERTISEMENT)
-                .setReportDelay(500L)
+                .setReportDelay(0L)
+                // Newer cases may use extended advertising; report it alongside legacy packets.
+                .setLegacy(false)
+                .setPhy(ScanSettings.PHY_LE_ALL_SUPPORTED)
                 .build()
 
-            val manufacturerData = ByteArray(27)
-            val manufacturerDataMask = ByteArray(27)
-
-            manufacturerData[0] = 7
-            manufacturerData[1] = 25
-
-            manufacturerDataMask[0] = -1
-            manufacturerDataMask[1] = -1
-
+            // Keep the Galaxy-compatible broad Apple filter; validate type and length in the parser.
             val scanFilter = ScanFilter.Builder()
-                .setManufacturerData(76, manufacturerData, manufacturerDataMask)
+                .setManufacturerData(76, byteArrayOf())
                 .build()
 
             mScanCallback = object : ScanCallback() {
                 override fun onScanResult(callbackType: Int, result: ScanResult) {
+                    if (mScanCallback !== this) return
+                    scanFailures = 0
                     processScanResult(result)
                 }
 
                 override fun onBatchScanResults(results: List<ScanResult>) {
-                    processedAddresses.clear()
+                    if (mScanCallback !== this) return
                     for (result in results) {
                         processScanResult(result)
                     }
@@ -183,47 +232,67 @@ class BLEManager(private val context: Context) {
 
                 override fun onScanFailed(errorCode: Int) {
                     Log.e(TAG, "BLE scan failed with error code: $errorCode")
+                    if (mScanCallback !== this) return
+                    try { mBluetoothLeScanner?.stopScan(this) } catch (_: Exception) { }
+                    mScanCallback = null
+                    mBluetoothLeScanner = null
+                    if (errorCode != SCAN_FAILED_FEATURE_UNSUPPORTED && scanningRequested) {
+                        val retryDelay = if (errorCode == 6) 30_000L
+                            else (1000L shl scanFailures.coerceAtMost(5)).coerceAtMost(30_000L)
+                        scanFailures++
+                        cleanupHandler.removeCallbacks(scanRetryRunnable)
+                        cleanupHandler.postDelayed(scanRetryRunnable, retryDelay)
+                    }
                 }
             }
 
             mBluetoothLeScanner?.startScan(listOf(scanFilter), scanSettings, mScanCallback)
             Log.d(TAG, "BLE scanner started successfully")
 
+            cleanupHandler.removeCallbacks(cleanupRunnable)
             cleanupHandler.postDelayed(cleanupRunnable, CLEANUP_INTERVAL_MS)
         } catch (t: Throwable) {
+            mScanCallback = null
+            mBluetoothLeScanner = null
             Log.e(TAG, "Error starting BLE scanner", t)
         }
     }
 
     @SuppressLint("MissingPermission")
     fun stopScanning() {
+        if (Looper.myLooper() != Looper.getMainLooper()) {
+            cleanupHandler.post { stopScanning() }
+            return
+        }
+        scanningRequested = false
+        cleanupHandler.removeCallbacks(scanRetryRunnable)
         try {
             if (mBluetoothLeScanner != null && mScanCallback != null) {
                 Log.d(TAG, "Stopping BLE scanner")
                 mBluetoothLeScanner?.stopScan(mScanCallback)
-                mScanCallback = null
             }
-
-            cleanupHandler.removeCallbacks(cleanupRunnable)
         } catch (t: Throwable) {
             Log.e(TAG, "Error stopping BLE scanner", t)
+        } finally {
+            mScanCallback = null
+            mBluetoothLeScanner = null
+            cleanupHandler.removeCallbacks(cleanupRunnable)
+            cleanupHandler.removeCallbacks(lidExpiryRunnable)
+            deviceStatusMap.clear()
+            verifiedAddresses.clear()
+            trustedIrk = null
+            trustedEncryptionKey = null
+            lastCaseSeenMillis = null
+            lastScanTimestampNanos = 0L
+            lidTracker.reset()
+            airPodsStatusListener?.onLidStateUnknown()
         }
     }
 
-    @OptIn(ExperimentalEncodingApi::class)
-    private fun getEncryptionKeyFromPreferences(): ByteArray? {
-        val keyBase64 = sharedPreferences.getString(AACPManager.Companion.ProximityKeyType.ENC_KEY.name, null)
-        return if (keyBase64 != null) {
-            try {
-                Base64.decode(keyBase64)
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to decode encryption key", e)
-                null
-            }
-        } else {
-            null
-        }
-    }
+    private fun getEncryptionKeyFromPreferences(): ByteArray? =
+        me.kavishdevar.librepods.data.SecureProximityKeyStore.get(context,
+            AACPManager.Companion.ProximityKeyType.ENC_KEY)
+
 
     @SuppressLint("GetInstance")
     private fun decryptLastBytes(data: ByteArray, key: ByteArray): ByteArray? {
@@ -243,10 +312,10 @@ class BLEManager(private val context: Context) {
         }
     }
 
-    private fun formatBattery(byteVal: Int): Pair<Boolean, Int> {
+    private fun formatBattery(byteVal: Int): Pair<Boolean, Int?> {
         val charging = (byteVal and 0x80) != 0
         val level = byteVal and 0x7F
-        return Pair(charging, level)
+        return Pair(charging, level.takeIf { it in 0..100 })
     }
 
     private fun processScanResult(result: ScanResult) {
@@ -254,63 +323,102 @@ class BLEManager(private val context: Context) {
             val scanRecord = result.scanRecord ?: return
             val address = result.device.address
 
-            if (processedAddresses.contains(address)) {
+            val manufacturerData = scanRecord.getManufacturerSpecificData(76) ?: return
+            val fromCase = CaseAdvertisementParser.isCaseAdvertisement(manufacturerData)
+            val fromPods = manufacturerData.size == 27 && manufacturerData[0] == 7.toByte() &&
+                manufacturerData[1] == 25.toByte() && manufacturerData[2] == 1.toByte()
+            if (!fromCase && !fromPods) return
+
+            val irk = getIrkFromPreferences()
+            val encryptionKey = getEncryptionKeyFromPreferences()
+            if (!fromCase && irk == null) {
+                Log.d(TAG, "Proximity advertisement before the identity key is loaded")
                 return
             }
+            if ((irk != null && trustedIrk != null && trustedIrk?.contentEquals(irk) != true) ||
+                (encryptionKey != null && trustedEncryptionKey != null &&
+                    trustedEncryptionKey?.contentEquals(encryptionKey) != true)) {
+                verifiedAddresses.clear()
+                deviceStatusMap.clear()
+                lidTracker.reset()
+                lastCaseSeenMillis = null
+                lastScanTimestampNanos = 0L
+            }
+            if (irk != null) trustedIrk = irk.copyOf()
+            if (encryptionKey != null) trustedEncryptionKey = encryptionKey.copyOf()
 
-            val manufacturerData = scanRecord.getManufacturerSpecificData(76) ?: return
-            if (manufacturerData.size <= 20) return
+            val caseReport = if (fromCase) {
+                if (encryptionKey == null) return
+                CaseAdvertisementParser.parse(manufacturerData, encryptionKey) ?: return
+            } else null
 
-            if (!verifiedAddresses.contains(address)) {
-                val irk = getIrkFromPreferences()
-                if (irk == null || !BluetoothCryptography.verifyRPA(address, irk)) {
+            if (!fromCase && !verifiedAddresses.contains(address)) {
+                if (!BluetoothCryptography.verifyRPA(address, irk!!)) {
                     return
                 }
+                if (verifiedAddresses.size >= 64) verifiedAddresses.clear()
                 verifiedAddresses.add(address)
                 Log.d(TAG, "RPA verified and added to trusted list: $address")
             }
 
-            processedAddresses.add(address)
-            lastBroadcastTime = System.currentTimeMillis()
+            if (result.timestampNanos < lastScanTimestampNanos) return
+            lastScanTimestampNanos = result.timestampNanos
+            val seenMillis = result.timestampNanos / 1_000_000L
+            if (SystemClock.elapsedRealtime() - seenMillis >= lidTracker.freshnessMillis) return
+            if (!lowPower) lidTracker.freshnessMillis = LID_FRESHNESS_MS
 
-            val encryptionKey = getEncryptionKeyFromPreferences()
-            val decryptedData = if (encryptionKey != null) decryptLastBytes(manufacturerData, encryptionKey) else null
-            val parsedStatus = if (decryptedData != null && decryptedData.size == 16) {
-                parseProximityMessageWithDecryption(address, manufacturerData, decryptedData)
+            val parsedStatus = (if (caseReport != null) {
+                AirPodsStatus(
+                    address = address,
+                    model = "AirPods Pro 3",
+                    leftBattery = caseReport.left.level,
+                    rightBattery = caseReport.right.level,
+                    caseBattery = caseReport.case.level,
+                    isLeftCharging = caseReport.left.charging,
+                    isRightCharging = caseReport.right.charging,
+                    isCaseCharging = caseReport.case.charging,
+                    lidOpen = caseReport.lidOpen,
+                    isCaseAdvertisement = true,
+                    caseOpenCounter = caseReport.lidCounter
+                )
             } else {
-                parseProximityMessage(address, manufacturerData)
-            }
+                val decryptedData = encryptionKey?.let { decryptLastBytes(manufacturerData, it) }
+                if (decryptedData != null && decryptedData.size == 16) {
+                    parseProximityMessageWithDecryption(address, manufacturerData, decryptedData)
+                } else {
+                    parseProximityMessage(address, manufacturerData)
+                }
+            }).copy(lastSeen = seenMillis)
 
             val previousStatus = deviceStatusMap[address]
             deviceStatusMap[address] = parsedStatus
+            if (fromCase) {
+                lastCaseSeenMillis = seenMillis
+                if (previousStatus == null || previousStatus.lidOpen != parsedStatus.lidOpen ||
+                    previousStatus.leftBattery != parsedStatus.leftBattery ||
+                    previousStatus.rightBattery != parsedStatus.rightBattery ||
+                    previousStatus.caseBattery != parsedStatus.caseBattery ||
+                    previousStatus.isLeftCharging != parsedStatus.isLeftCharging ||
+                    previousStatus.isRightCharging != parsedStatus.isRightCharging ||
+                    previousStatus.isCaseCharging != parsedStatus.isCaseCharging) {
+                    Log.i(TAG, "Selected case decoded: lid=${parsedStatus.lidOpen}, " +
+                        "left=${parsedStatus.leftBattery}, right=${parsedStatus.rightBattery}, case=${parsedStatus.caseBattery}, " +
+                        "leftCharging=${parsedStatus.isLeftCharging}, rightCharging=${parsedStatus.isRightCharging}")
+                }
+            }
 
             airPodsStatusListener?.let { listener ->
                 if (previousStatus == null) {
                     listener.onBroadcastFromNewAddress(parsedStatus)
                     Log.d(TAG, "New AirPods device detected: $address")
 
-                    if (currentGlobalLidState == null || currentGlobalLidState != parsedStatus.lidOpen) {
-                        currentGlobalLidState = parsedStatus.lidOpen
-                        listener.onLidStateChanged(parsedStatus.lidOpen)
-                        Log.d(TAG, "Lid state ${if (parsedStatus.lidOpen) "opened" else "closed"} (detected from new device)")
-                    }
                 } else {
                     if (parsedStatus != previousStatus) {
                         listener.onDeviceStatusChanged(parsedStatus, previousStatus)
                     }
 
-                    if (parsedStatus.lidOpen != previousStatus.lidOpen) {
-                        val previousGlobalState = currentGlobalLidState
-                        currentGlobalLidState = parsedStatus.lidOpen
-
-                        if (previousGlobalState != parsedStatus.lidOpen) {
-                            listener.onLidStateChanged(parsedStatus.lidOpen)
-                            Log.d(TAG, "Lid state changed from $previousGlobalState to ${parsedStatus.lidOpen}")
-                        }
-                    }
-
-                    if (parsedStatus.isLeftInEar != previousStatus.isLeftInEar ||
-                        parsedStatus.isRightInEar != previousStatus.isRightInEar) {
+                    if (!fromCase && (parsedStatus.isLeftInEar != previousStatus.isLeftInEar ||
+                        parsedStatus.isRightInEar != previousStatus.isRightInEar)) {
                         listener.onEarStateChanged(
                             parsedStatus,
                             parsedStatus.isLeftInEar,
@@ -321,10 +429,31 @@ class BLEManager(private val context: Context) {
 
                     if (parsedStatus.leftBattery != previousStatus.leftBattery ||
                         parsedStatus.rightBattery != previousStatus.rightBattery ||
-                        parsedStatus.caseBattery != previousStatus.caseBattery) {
+                        parsedStatus.caseBattery != previousStatus.caseBattery ||
+                        parsedStatus.isLeftCharging != previousStatus.isLeftCharging ||
+                        parsedStatus.isRightCharging != previousStatus.isRightCharging ||
+                        parsedStatus.isCaseCharging != previousStatus.isCaseCharging) {
                         listener.onBatteryChanged(parsedStatus)
                         Log.d(TAG, "Battery changed - Left: ${parsedStatus.leftBattery}, Right: ${parsedStatus.rightBattery}, Case: ${parsedStatus.caseBattery}")
                     }
+                }
+                // Once the selected Pro 3 case is decoded, it is the authoritative lid source.
+                // Falling back to pod bytes during sparse case intervals would repeat popups.
+                val lid = parsedStatus.lidOpen
+                val caseHasPriority = !fromCase && lastCaseSeenMillis != null
+                if (lid != null && !caseHasPriority) {
+                    when (lidTracker.observe(lid, seenMillis, caseReport?.lidCounter)) {
+                        LidState.OPEN -> {
+                            Log.i(TAG, "Lid open seen ${SystemClock.elapsedRealtime() - seenMillis}ms after the advertisement" +
+                                if (lowPower) " (low power scan)" else "")
+                            listener.onLidStateChanged(true)
+                        }
+                        LidState.CLOSED -> listener.onLidStateChanged(false)
+                        else -> Unit
+                    }
+                    cleanupHandler.removeCallbacks(lidExpiryRunnable)
+                    cleanupHandler.postDelayed(lidExpiryRunnable,
+                        (lidTracker.freshnessMillis - (SystemClock.elapsedRealtime() - seenMillis)).coerceAtLeast(1L))
                 }
             }
         } catch (t: Throwable) {
@@ -361,18 +490,13 @@ class BLEManager(private val context: Context) {
         val rawCaseBatteryByte = decrypted[3].toInt() and 0xFF
         val (isCaseCharging, rawCaseBattery) = formatBattery(rawCaseBatteryByte)
 
-        val caseBattery = if (rawCaseBatteryByte == 0xFF || (isCaseCharging && rawCaseBattery == 127)) {
-            lastValidCaseBatteryMap[address]
-        } else {
-            lastValidCaseBatteryMap[address] = rawCaseBattery
-            rawCaseBattery
-        }
+        val caseBattery = rawCaseBattery
 
-        val lidOpen = ((lid shr 3) and 0x01) == 0
+        val lidOpen = if (thisInCase) ((lid shr 3) and 0x01) == 0 else null
 
         return AirPodsStatus(
             address = address,
-            lastSeen = System.currentTimeMillis(),
+            lastSeen = SystemClock.elapsedRealtime(),
             paired = paired,
             model = model,
             leftBattery = leftBattery,
@@ -390,7 +514,7 @@ class BLEManager(private val context: Context) {
     }
 
     private fun cleanupStaleDevices() {
-        val now = System.currentTimeMillis()
+        val now = SystemClock.elapsedRealtime()
         val staleCutoff = now - STALE_DEVICE_TIMEOUT_MS
         val hadDevices = deviceStatusMap.isNotEmpty()
 
@@ -406,29 +530,10 @@ class BLEManager(private val context: Context) {
         }
     }
 
-    private fun checkLidStateTimeout() {
-        val currentTime = System.currentTimeMillis()
-        if (currentTime - lastBroadcastTime > LID_CLOSE_TIMEOUT_MS && currentGlobalLidState == true) {
-            Log.d(TAG, "No broadcasts for ${LID_CLOSE_TIMEOUT_MS}ms, forcing lid state to closed")
-            currentGlobalLidState = false
-            airPodsStatusListener?.onLidStateChanged(false)
-        }
-    }
+    private fun getIrkFromPreferences(): ByteArray? =
+        me.kavishdevar.librepods.data.SecureProximityKeyStore.get(context,
+            AACPManager.Companion.ProximityKeyType.IRK)
 
-    @OptIn(ExperimentalEncodingApi::class)
-    private fun getIrkFromPreferences(): ByteArray? {
-        val irkBase64 = sharedPreferences.getString(AACPManager.Companion.ProximityKeyType.IRK.name, null)
-        return if (irkBase64 != null) {
-            try {
-                Base64.decode(irkBase64)
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to decode IRK", e)
-                null
-            }
-        } else {
-            null
-        }
-    }
 
     private fun parseProximityMessage(address: String, data: ByteArray): AirPodsStatus {
         val paired = data[2].toInt() == 1
@@ -461,7 +566,7 @@ class BLEManager(private val context: Context) {
         val isRightCharging = if (isFlipped) (flags and 0x01) != 0 else (flags and 0x02) != 0
         val isCaseCharging = (flags and 0x04) != 0
 
-        val lidOpen = ((lid shr 3) and 0x01) == 0
+        val lidOpen = if (thisInCase) ((lid shr 3) and 0x01) == 0 else null
 
         fun decodeBattery(n: Int): Int? = when (n) {
             in 0x0..0x9 -> n * 10
@@ -472,7 +577,7 @@ class BLEManager(private val context: Context) {
 
         return AirPodsStatus(
             address = address,
-            lastSeen = System.currentTimeMillis(),
+            lastSeen = SystemClock.elapsedRealtime(),
             paired = paired,
             model = model,
             leftBattery = decodeBattery(leftBatteryNibble),
@@ -490,9 +595,14 @@ class BLEManager(private val context: Context) {
     }
 
     companion object {
+        internal fun mostRecentPodStatus(statuses: Collection<AirPodsStatus>): AirPodsStatus? =
+            statuses.filter { !it.isCaseAdvertisement }.maxByOrNull { it.lastSeen }
         private const val TAG = "AirPodsBLE"
         private const val CLEANUP_INTERVAL_MS = 10000L
         private const val STALE_DEVICE_TIMEOUT_MS = 15000L
-        private const val LID_CLOSE_TIMEOUT_MS = 2500L
+        private const val LID_FRESHNESS_MS = 2500L
+        // SCAN_MODE_LOW_POWER listens about 0.5 s out of every 5 s.
+        private const val LOW_POWER_LID_FRESHNESS_MS = 12_000L
+        private const val SCREEN_OFF_LOW_POWER_DELAY_MS = 15_000L
     }
 }

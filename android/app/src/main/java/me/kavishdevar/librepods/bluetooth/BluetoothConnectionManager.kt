@@ -25,8 +25,37 @@ import android.os.ParcelUuid
 import android.util.Log
 
 object BluetoothConnectionManager {
+    @Volatile
     var aacpSocket: BluetoothSocket? = null
-    var attSocket: BluetoothSocket? = null
+        private set
+
+    private val writeLock = Any()
+    private val sessionSocket = ThreadLocal<BluetoothSocket?>()
+
+    fun publishSocket(socket: BluetoothSocket) {
+        aacpSocket = socket
+    }
+
+    fun clearSocket(expected: BluetoothSocket) {
+        if (aacpSocket === expected) aacpSocket = null
+    }
+
+    /** Session work always writes to its captured socket, even if a newer session has started. */
+    fun <T> withSessionSocket(socket: BluetoothSocket, block: () -> T): T {
+        val previous = sessionSocket.get()
+        sessionSocket.set(socket)
+        return try { block() } finally {
+            if (previous == null) sessionSocket.remove() else sessionSocket.set(previous)
+        }
+    }
+
+    fun writePacket(packet: ByteArray): Boolean = synchronized(writeLock) {
+        val socket = sessionSocket.get() ?: aacpSocket ?: return@synchronized false
+        if (!socket.isConnected) return@synchronized false
+        socket.outputStream.write(packet)
+        socket.outputStream.flush()
+        true
+    }
 }
 
 fun createBluetoothSocket(

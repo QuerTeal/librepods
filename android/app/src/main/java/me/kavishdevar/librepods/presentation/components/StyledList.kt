@@ -1,5 +1,6 @@
 package me.kavishdevar.librepods.presentation.components
 
+import me.kavishdevar.librepods.presentation.theme.AppleShape
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -24,6 +25,7 @@ import me.kavishdevar.librepods.presentation.theme.DesignSystem
 import me.kavishdevar.librepods.presentation.theme.LibrePodsTheme
 import me.kavishdevar.librepods.presentation.theme.LocalDesignSystem
 import me.kavishdevar.librepods.presentation.theme.sectionHeader
+import me.kavishdevar.librepods.presentation.theme.LocalOneUI
 
 @Composable
 fun StyledList(
@@ -34,6 +36,17 @@ fun StyledList(
 ) {
     val scope = StyledListScope()
     scope.content()
+
+    if (LocalOneUI.current) {
+        Column(modifier = modifier) {
+            title?.let { OneUICategoryHeader(it) }
+            OneUICard {
+                scope.items.forEachIndexed { index, item -> item(index, scope.items.size) }
+            }
+            description?.let { OneUIFooter(it) }
+        }
+        return
+    }
 
     val m3eEnabled = LocalDesignSystem.current == DesignSystem.Material
 
@@ -48,15 +61,15 @@ fun StyledList(
                 Text(
                     text = it,
                     color = if (m3eEnabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.sectionHeader,
-                    style = MaterialTheme.typography.labelSmallEmphasized
+                    style = if (m3eEnabled) MaterialTheme.typography.labelSmallEmphasized else MaterialTheme.typography.bodySmall
                 )
             }
         }
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(if (m3eEnabled) Color.Transparent else MaterialTheme.colorScheme.surface, RoundedCornerShape(if (m3eEnabled) 24.dp else 28.dp))
-                .clip(RoundedCornerShape(if (m3eEnabled) 24.dp else 28.dp))
+                .background(if (m3eEnabled) Color.Transparent else MaterialTheme.colorScheme.surface, if (m3eEnabled) RoundedCornerShape(24.dp) else AppleShape(20.dp))
+                .clip(if (m3eEnabled) RoundedCornerShape(24.dp) else AppleShape(20.dp))
         ) {
             if (m3eEnabled && description != null) {
                 Text(
@@ -74,6 +87,7 @@ fun StyledList(
         }
     }
     if (!m3eEnabled && description != null) {
+        Spacer(modifier = Modifier.height(8.dp))
         Text(
             text = description,
             style = MaterialTheme.typography.bodySmallEmphasized,
@@ -82,6 +96,24 @@ fun StyledList(
         )
         Spacer(modifier = Modifier.height(4.dp))
     }
+}
+
+/** A section title in the active look, for sections that aren't a [StyledList]. */
+@Composable
+fun StyledSectionHeader(text: String, modifier: Modifier = Modifier) {
+    if (LocalOneUI.current) {
+        Box(modifier = modifier) { OneUICategoryHeader(text) }
+        return
+    }
+    val m3eEnabled = LocalDesignSystem.current == DesignSystem.Material
+    Text(
+        text = text,
+        color = if (m3eEnabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.sectionHeader,
+        style = MaterialTheme.typography.labelSmallEmphasized,
+        modifier = modifier
+            .padding(horizontal = 16.dp)
+            .padding(top = 4.dp, bottom = if (m3eEnabled) 12.dp else 8.dp)
+    )
 }
 
 class StyledListScope {

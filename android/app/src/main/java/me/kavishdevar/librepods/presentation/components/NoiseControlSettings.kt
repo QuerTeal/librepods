@@ -74,6 +74,13 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import me.kavishdevar.librepods.R
+import androidx.compose.foundation.LocalIndication
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
+import me.kavishdevar.librepods.presentation.theme.AppleShape
 import me.kavishdevar.librepods.data.NoiseControlMode
 import me.kavishdevar.librepods.presentation.theme.DesignSystem
 import me.kavishdevar.librepods.presentation.theme.LibrePodsTheme
@@ -81,6 +88,17 @@ import me.kavishdevar.librepods.presentation.theme.LocalDesignSystem
 import me.kavishdevar.librepods.presentation.theme.sectionHeader
 import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlin.math.roundToInt
+import me.kavishdevar.librepods.presentation.theme.sfProFamily
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.font.FontWeight
+import me.kavishdevar.librepods.presentation.theme.LocalOneUI
+import androidx.compose.foundation.layout.Spacer
 
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @SuppressLint("UnspecifiedRegisterReceiverFlag", "UnusedBoxWithConstraintsScope")
@@ -90,6 +108,15 @@ fun NoiseControlSettings(
     noiseControlModeValue: Int,
     onNoiseControlModeChanged: (Int) -> Unit
 ) {
+    val haptics = LocalHapticFeedback.current
+    val onModeChangedWithTick: (Int) -> Unit = { mode ->
+        if (mode != noiseControlModeValue) haptics.performHapticFeedback(HapticFeedbackType.SegmentTick)
+        onNoiseControlModeChanged(mode)
+    }
+    if (LocalOneUI.current) {
+        OneUINoiseControl(showOffListeningMode, noiseControlModeValue, onModeChangedWithTick)
+        return
+    }
     when (LocalDesignSystem.current) {
         DesignSystem.Material -> {
             val options = buildList {
@@ -307,7 +334,7 @@ fun NoiseControlSettings(
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(60.dp)
-                            .background(backgroundColor, RoundedCornerShape(28.dp))
+                            .background(backgroundColor, AppleShape(28.dp))
                     ) {
                         Row(
                             modifier = Modifier.fillMaxWidth()
@@ -400,7 +427,7 @@ fun NoiseControlSettings(
                                 modifier = Modifier
                                     .fillMaxSize()
                                     .padding(3.dp)
-                                    .background(selectedBackground, RoundedCornerShape(26.dp))
+                                    .background(selectedBackground, AppleShape(26.dp))
                             )
                         }
 
@@ -471,26 +498,26 @@ fun NoiseControlSettings(
                         if (showOffListeningMode) {
                             Text(
                                 text = stringResource(R.string.off),
-                                style = TextStyle(fontSize = 12.sp, color = textColor),
+                                style = TextStyle(fontSize = 12.sp, color = textColor, fontFamily = sfProFamily),
                                 textAlign = TextAlign.Center,
                                 modifier = Modifier.weight(1f)
                             )
                         }
                         Text(
                             text = stringResource(R.string.transparency),
-                            style = TextStyle(fontSize = 12.sp, color = textColor),
+                            style = TextStyle(fontSize = 12.sp, color = textColor, fontFamily = sfProFamily),
                             textAlign = TextAlign.Center,
                             modifier = Modifier.weight(1f)
                         )
                         Text(
                             text = stringResource(R.string.adaptive),
-                            style = TextStyle(fontSize = 12.sp, color = textColor),
+                            style = TextStyle(fontSize = 12.sp, color = textColor, fontFamily = sfProFamily),
                             textAlign = TextAlign.Center,
                             modifier = Modifier.weight(1f)
                         )
                         Text(
                             text = stringResource(R.string.noise_cancellation),
-                            style = TextStyle(fontSize = 12.sp, color = textColor),
+                            style = TextStyle(fontSize = 12.sp, color = textColor, fontFamily = sfProFamily),
                             textAlign = TextAlign.Center,
                             modifier = Modifier.weight(1f)
                         )
@@ -501,6 +528,95 @@ fun NoiseControlSettings(
     }
 }
 
+
+/** Galaxy Wearable-style picker: round buttons in a card, the active mode filled with the accent color. */
+@Composable
+private fun OneUINoiseControl(
+    showOffListeningMode: Boolean,
+    noiseControlModeValue: Int,
+    onNoiseControlModeChanged: (Int) -> Unit
+) {
+    val options = buildList {
+        if (showOffListeningMode) add(Triple(NoiseControlMode.OFF, R.string.off, R.drawable.noise_cancellation))
+        add(Triple(NoiseControlMode.TRANSPARENCY, R.string.transparency, R.drawable.transparency))
+        add(Triple(NoiseControlMode.ADAPTIVE, R.string.adaptive, R.drawable.adaptive))
+        add(Triple(NoiseControlMode.NOISE_CANCELLATION, R.string.noise_cancellation, R.drawable.noise_cancellation))
+    }
+    val selectedMode = NoiseControlMode.entries[(noiseControlModeValue - 1).coerceIn(0, NoiseControlMode.entries.lastIndex)]
+
+    Column {
+        OneUICategoryHeader(stringResource(R.string.noise_control))
+        OneUICard {
+            OneUIChoiceGrid(
+                count = options.size,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 8.dp, vertical = 18.dp),
+            ) { index, choiceModifier ->
+                    val (mode, labelRes, iconRes) = options[index]
+                    val selected = selectedMode == mode
+                    val container by animateColorAsState(
+                        if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHighest,
+                        label = "modeContainer"
+                    )
+                    val content by animateColorAsState(
+                        if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface,
+                        label = "modeContent"
+                    )
+                    val interaction = remember { MutableInteractionSource() }
+                    val pressed by interaction.collectIsPressedAsState()
+                    val scale by animateFloatAsState(
+                        when {
+                            pressed -> 0.86f
+                            selected -> 1f
+                            else -> 0.92f
+                        },
+                        animationSpec = spring(dampingRatio = 0.6f, stiffness = Spring.StiffnessMedium),
+                        label = "modeScale"
+                    )
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = choiceModifier
+                            .clip(RoundedCornerShape(16.dp))
+                            .selectable(
+                                selected = selected,
+                                interactionSource = interaction,
+                                indication = LocalIndication.current,
+                                role = Role.RadioButton,
+                                onClick = { if (!selected) onNoiseControlModeChanged(mode.ordinal + 1) }
+                            )
+                            .padding(vertical = 4.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(58.dp)
+                                .scale(scale)
+                                .clip(CircleShape)
+                                .background(container),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                bitmap = ImageBitmap.imageResource(iconRes),
+                                contentDescription = null,
+                                tint = content,
+                                modifier = Modifier.size(30.dp)
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = stringResource(labelRes),
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                            color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                            textAlign = TextAlign.Center,
+                            maxLines = 2,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+            }
+        }
+    }
+}
 
 @Preview
 @Composable

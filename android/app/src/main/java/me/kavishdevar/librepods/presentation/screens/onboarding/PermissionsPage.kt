@@ -50,6 +50,8 @@ import me.kavishdevar.librepods.presentation.MaterialIcons
 import me.kavishdevar.librepods.presentation.components.ListItemOrientation
 import me.kavishdevar.librepods.presentation.components.StyledList
 import me.kavishdevar.librepods.presentation.components.StyledListItem
+import androidx.compose.ui.res.stringResource
+import me.kavishdevar.librepods.R
 
 @OptIn(ExperimentalPermissionsApi::class)
 @Composable
@@ -136,7 +138,7 @@ fun PermissionsPage(
                 .verticalScroll(scrollState),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            StyledList(title = "Required Permissions") {
+            StyledList(title = stringResource(R.string.required_permissions)) {
                 val animatedBluetoothIconColor by animateColorAsState(if (bluetoothPermissionsState.allPermissionsGranted) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface)
                 val animatedBluetoothContainerColor by animateColorAsState(
                     if (bluetoothPermissionsState.allPermissionsGranted) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHighest
@@ -150,7 +152,7 @@ fun PermissionsPage(
                             bluetoothPermissionsState.launchMultiplePermissionRequest()
                         }
                     } else null,
-                    description = "Required to communicate with AirPods",
+                    description = stringResource(R.string.permission_bluetooth_description),
                     orientation = ListItemOrientation.Vertical,
                     leadingContent = {
                         Box(
@@ -173,7 +175,7 @@ fun PermissionsPage(
                     },
                 )
             }
-            StyledList(title = "Optional Permissions") {
+            StyledList(title = stringResource(R.string.optional_permissions)) {
                 val animatedNotificationsIconColor by animateColorAsState(
                     if (notificationPermissionState.status.isGranted) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
                 )
@@ -186,14 +188,14 @@ fun PermissionsPage(
                 )
 
                 StyledListItem(
-                    name = "Notifications",
+                    name = stringResource(R.string.notifications),
                     onClick = if (!notificationPermissionState.status.isGranted) {
                         {
                             grantingAll = false
                             notificationPermissionState.launchPermissionRequest()
                         }
                     } else null,
-                    description = "Show battery status",
+                    description = stringResource(R.string.permission_notifications_description),
                     orientation = ListItemOrientation.Vertical,
                     leadingContent = {
                         Box(
@@ -216,14 +218,14 @@ fun PermissionsPage(
                     },
                 )
                 StyledListItem(
-                    name = "Phone",
+                    name = stringResource(R.string.phone),
                     onClick = if (!phonePermissionState.allPermissionsGranted) {
                         {
                             grantingAll = false
                             phonePermissionState.launchMultiplePermissionRequest()
                         }
                     } else null,
-                    description = "Respond to phone calls with head gestures",
+                    description = stringResource(R.string.permission_phone_description),
                     orientation = ListItemOrientation.Vertical,
                     leadingContent = {
                         Box(
@@ -251,7 +253,7 @@ fun PermissionsPage(
             val animatedOverlayContainerColor by animateColorAsState(if (canDrawOverlays.value) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHighest)
 
             StyledListItem(
-                name = "Display over other apps",
+                name = stringResource(R.string.display_over_other_apps),
                 onClick = if (!canDrawOverlays.value) {
                     {
                         grantingAll = false
@@ -262,7 +264,7 @@ fun PermissionsPage(
                         context.startActivity(intent)
                     }
                 } else null,
-                description = "Show popups when AirPods are nearby or audio switches to them.",
+                description = stringResource(R.string.permission_overlay_description),
                 orientation = ListItemOrientation.Vertical,
                 leadingContent = {
                     Box(
@@ -319,7 +321,7 @@ fun PermissionsPage(
                     enabled = !bluetoothPermissionsState.allPermissionsGranted || !notificationPermissionState.status.isGranted || !phonePermissionState.allPermissionsGranted || !canDrawOverlays.value
                 ) {
                     Text(
-                        text = "Grant all",
+                        text = stringResource(R.string.grant_all),
                         style = MaterialTheme.typography.labelMedium
                     )
                 }

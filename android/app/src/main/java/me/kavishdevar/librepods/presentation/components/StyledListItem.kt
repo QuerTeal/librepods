@@ -38,6 +38,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -53,6 +54,13 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.toggleableState
+import androidx.compose.ui.semantics.disabled
+import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
@@ -67,9 +75,13 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
 import me.kavishdevar.librepods.R
+import me.kavishdevar.librepods.presentation.theme.AppleUnevenShape
+import me.kavishdevar.librepods.presentation.theme.AppleShape
 import me.kavishdevar.librepods.presentation.theme.DesignSystem
 import me.kavishdevar.librepods.presentation.theme.LocalDesignSystem
 import me.kavishdevar.librepods.presentation.theme.sectionHeader
+import me.kavishdevar.librepods.presentation.theme.sfProFamily
+import me.kavishdevar.librepods.presentation.theme.LocalOneUI
 
 @Composable
 fun StyledListItem(
@@ -84,6 +96,15 @@ fun StyledListItem(
     leadingContent: (@Composable () -> Unit)? = null,
     trailingContent: (@Composable () -> Unit)? = null
 ) {
+    if (LocalOneUI.current) {
+        Column(modifier = modifier) {
+            title?.let { OneUICategoryHeader(it) }
+            OneUICard {
+                OneUIListItem(name, onClick, description, enabled, orientation, null, leadingContent, trailingContent, showDivider = false)
+            }
+        }
+        return
+    }
     val m3eEnabled = LocalDesignSystem.current == DesignSystem.Material
     Column {
         title?.let {
@@ -106,9 +127,9 @@ fun StyledListItem(
                 .heightIn(min = 48.dp)
                 .background(
                     if (m3eEnabled) Color.Transparent else MaterialTheme.colorScheme.surface,
-                    RoundedCornerShape(if (m3eEnabled) 16.dp else 28.dp)
+                    if (m3eEnabled) RoundedCornerShape(16.dp) else AppleShape(28.dp)
                 )
-                .clip(RoundedCornerShape(if (m3eEnabled) 16.dp else 28.dp))
+                .clip(if (m3eEnabled) RoundedCornerShape(16.dp) else AppleShape(28.dp))
         ) {
             StyledListItemContent(
                 name = name,
@@ -135,6 +156,8 @@ fun StyledListScope.StyledListItem(
     enabled: Boolean = onClick != null,
     orientation: ListItemOrientation = ListItemOrientation.Horizontal,
     selected: Boolean? = null,
+    /** Marks an option of a multiple choice; [selected] is for a single choice. */
+    checked: Boolean? = null,
     leadingContent: (@Composable () -> Unit)? = null,
     trailingContent: (@Composable () -> Unit)? = null
 ) {
@@ -149,10 +172,42 @@ fun StyledListScope.StyledListItem(
             orientation = orientation,
             modifier = modifier,
             selected = selected,
+            checked = checked,
             leadingContent = leadingContent,
             trailingContent = trailingContent
         )
     }
+}
+
+/**
+ * One UI shows a setting's current value as an accent-colored summary under the title (the
+ * horizontal orientation's trailing value elsewhere), and explanatory text as a gray summary.
+ */
+@Composable
+private fun OneUIListItem(
+    name: String,
+    onClick: (() -> Unit)?,
+    description: String?,
+    enabled: Boolean,
+    orientation: ListItemOrientation,
+    selected: Boolean?,
+    leadingContent: (@Composable () -> Unit)?,
+    trailingContent: (@Composable () -> Unit)?,
+    showDivider: Boolean,
+    checked: Boolean? = null,
+) {
+    OneUIRow(
+        title = name,
+        summary = description,
+        valueSummary = orientation == ListItemOrientation.Horizontal && onClick != null && selected == null && checked == null,
+        onClick = onClick,
+        enabled = onClick == null || enabled,
+        selected = selected,
+        checked = checked,
+        showDivider = showDivider,
+        leading = leadingContent,
+        trailing = trailingContent
+    )
 }
 
 enum class ListItemOrientation{
@@ -173,9 +228,14 @@ private fun StyledListItemContent(
     count: Int,
     orientation: ListItemOrientation = ListItemOrientation.Horizontal,
     selected: Boolean? = null,
+    checked: Boolean? = null,
     leadingContent: (@Composable () -> Unit)? = null,
     trailingContent: (@Composable () -> Unit)? = null
 ) {
+    if (LocalOneUI.current) {
+        OneUIListItem(name, onClick, description, enabled, orientation, selected, leadingContent, trailingContent, showDivider = index + 1 != count, checked = checked)
+        return
+    }
     val isDarkTheme = isSystemInDarkTheme()
     val surfaceColor = MaterialTheme.colorScheme.surface
     val surfaceDimColor = MaterialTheme.colorScheme.surfaceDim
@@ -189,9 +249,10 @@ private fun StyledListItemContent(
             val trailingContentDefault: @Composable () -> Unit = {
                 if (trailingContent == null) {
                     if (onClick != null) {
-                        if (selected != null) {
+                        val ticked = selected ?: checked
+                        if (ticked != null) {
                             val floatAnimateState by animateFloatAsState(
-                                targetValue = if (selected) 1f else 0f,
+                                targetValue = if (ticked) 1f else 0f,
                                 animationSpec = tween(durationMillis = 300)
                             )
 
@@ -199,7 +260,7 @@ private fun StyledListItemContent(
                                 text = "􀆅",
                                 style = TextStyle(
                                     fontSize = 20.sp,
-                                    fontFamily = FontFamily(Font(R.font.sf_pro)),
+                                    fontFamily = sfProFamily,
                                     color = MaterialTheme.colorScheme.primary.copy(alpha = floatAnimateState),
                                 ),
                                 modifier = Modifier.padding(end = 4.dp)
@@ -224,12 +285,11 @@ private fun StyledListItemContent(
                         animatedBackgroundColor,
                         when {
                             (index == 0 && count == 1) -> {
-                                RoundedCornerShape(28.dp)
+                                AppleShape(28.dp)
                             }
 
                             (index == 0) -> {
-                                RoundedCornerShape(
-                                    topStart = 28.dp,
+                                AppleUnevenShape(topStart = 28.dp,
                                     topEnd = 28.dp,
                                     bottomStart = 0.dp,
                                     bottomEnd = 0.dp
@@ -237,8 +297,7 @@ private fun StyledListItemContent(
                             }
 
                             (index + 1 == count) -> {
-                                RoundedCornerShape(
-                                    topStart = 0.dp,
+                                AppleUnevenShape(topStart = 0.dp,
                                     topEnd = 0.dp,
                                     bottomStart = 28.dp,
                                     bottomEnd = 28.dp
@@ -250,7 +309,24 @@ private fun StyledListItemContent(
                             }
                         }
                     )
-                    .pointerInput(Unit) {
+                    .semantics(mergeDescendants = true) {
+                        if (selected != null) {
+                            role = Role.RadioButton
+                            toggleableState = ToggleableState(selected)
+                        } else if (checked != null) {
+                            role = Role.Checkbox
+                            toggleableState = ToggleableState(checked)
+                        }
+                        if (!enabled) disabled()
+                        if (onClick != null) onClick {
+                            if (enabled) {
+                                haptics.performHapticFeedback(HapticFeedbackType.ContextClick)
+                                onClick.invoke()
+                                true
+                            } else false
+                        }
+                    }
+                    .pointerInput(enabled, onClick) {
                         detectTapGestures(
                             onPress = {
                                 if (enabled) {
@@ -284,7 +360,10 @@ private fun StyledListItemContent(
                         leadingContent()
                         Spacer(modifier = Modifier.width(12.dp))
                     }
-                    Column (verticalArrangement = Arrangement.Center) {
+                    Column (
+                        modifier = if (orientation == ListItemOrientation.Vertical) Modifier.weight(1f) else Modifier,
+                        verticalArrangement = Arrangement.Center
+                    ) {
                         Text(
                             text = name,
                             style = MaterialTheme.typography.bodyMedium,
@@ -300,7 +379,7 @@ private fun StyledListItemContent(
                         }
                     }
 
-                    Spacer(modifier = Modifier.weight(1f))
+                    if (orientation == ListItemOrientation.Horizontal) Spacer(modifier = Modifier.weight(1f))
 
                     if (orientation == ListItemOrientation.Horizontal && description != null) {
                         Text(
@@ -357,7 +436,9 @@ private fun StyledListItemContent(
                     trailingContent = {
                         if (trailingContent == null) {
                             if (onClick != null) {
-                                if (selected == true) {
+                                if (checked != null) {
+                                    Checkbox(checked = checked, onCheckedChange = null)
+                                } else if (selected == true) {
                                     Icon(Icons.Default.Check, contentDescription = null)
                                 } else if (selected == null) {
                                     Icon(

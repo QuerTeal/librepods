@@ -1,23 +1,8 @@
 /*
-    LibrePods - AirPods liberated from Apple’s ecosystem
-    Copyright (C) 2025 LibrePods contributors
-
-    This program is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    any later version.
-
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
-
-    You should have received a copy of the GNU General Public License
-    along with this program.  If not, see <https://www.gnu.org/licenses/>.
-*/
-
-@file:OptIn(ExperimentalEncodingApi::class)
-
+ * LibrePods - AirPods liberated from Apple's ecosystem
+ * Copyright (C) 2025 LibrePods contributors
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ */
 package me.kavishdevar.librepods.presentation.overlays
 
 import android.animation.Animator
@@ -30,729 +15,508 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
-import android.content.res.Resources
+import android.graphics.Color
+import android.graphics.ImageDecoder
 import android.graphics.PixelFormat
+import android.graphics.drawable.AnimatedImageDrawable
 import android.graphics.drawable.GradientDrawable
-import android.media.AudioManager
-import android.os.Build
 import android.os.Handler
 import android.os.Looper
-import android.util.Log.e
+import android.util.Log
 import android.view.Gravity
+import android.view.HapticFeedbackConstants
 import android.view.LayoutInflater
 import android.view.MotionEvent
 import android.view.VelocityTracker
 import android.view.View
+import android.view.ViewConfiguration
+import android.view.WindowInsets
 import android.view.WindowManager
+import android.view.accessibility.AccessibilityManager
+import android.view.accessibility.AccessibilityNodeInfo
 import android.view.animation.AccelerateInterpolator
-import android.view.animation.AnticipateOvershootInterpolator
 import android.view.animation.DecelerateInterpolator
-import android.view.animation.OvershootInterpolator
 import android.widget.FrameLayout
 import android.widget.ImageButton
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.TextView
-import android.widget.VideoView
-import androidx.core.net.toUri
-import androidx.dynamicanimation.animation.DynamicAnimation
-import androidx.dynamicanimation.animation.SpringAnimation
-import androidx.dynamicanimation.animation.SpringForce
+import me.kavishdevar.librepods.MainActivity
 import me.kavishdevar.librepods.R
 import me.kavishdevar.librepods.data.AirPodsNotifications
 import me.kavishdevar.librepods.data.Battery
 import me.kavishdevar.librepods.data.BatteryComponent
 import me.kavishdevar.librepods.data.BatteryStatus
+import me.kavishdevar.librepods.data.combinedBudsBattery
+import me.kavishdevar.librepods.data.hasReportedLevel
+import me.kavishdevar.librepods.presentation.theme.AppFonts
 import me.kavishdevar.librepods.services.ServiceManager
-import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlin.math.abs
 
-enum class IslandType {
-    CONNECTED,
-    TAKING_OVER,
-    MOVED_TO_REMOTE,
-    MOVED_TO_OTHER_DEVICE,
-}
+enum class IslandType { CONNECTED, TAKING_OVER, MOVED_TO_REMOTE, MOVED_TO_OTHER_DEVICE }
 
-class IslandWindow(private val context: Context) {
-    private val windowManager: WindowManager = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
+/** Compact overlay with expandable details. Its touch area always follows the visible card. */
+class IslandWindow(
+    private val context: Context,
+    private val observeDeviceEvents: Boolean = true,
+    private val autoCloseMillis: Long = 4500L,
+    private val onOpenApp: (() -> Unit)? = null
+) {
+    private val windowManager = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
+    private val accessibilityManager = context.getSystemService(AccessibilityManager::class.java)
     @SuppressLint("InflateParams")
-    private val islandView: View = LayoutInflater.from(context).inflate(R.layout.island_window, null)
-    private var isClosing = false
+    private val islandView = LayoutInflater.from(context).inflate(R.layout.island_window, null) as LinearLayout
+    private val containerView = FrameLayout(context).apply {
+        addView(islandView, FrameLayout.LayoutParams(-1, -2))
+        importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_YES
+        isClickable = true
+        isLongClickable = true
+        isFocusable = true
+    }
+    private val product = islandView.findViewById<ImageView>(R.id.island_product_image)
+    private val nameView = islandView.findViewById<TextView>(R.id.island_device_name)
+    private val statusView = islandView.findViewById<TextView>(R.id.island_connected_text)
+    private val batteryText = islandView.findViewById<TextView>(R.id.island_battery_text)
+    private val batteryProgress = islandView.findViewById<ProgressBar>(R.id.island_battery_progress)
+    private val batteryContainer = islandView.findViewById<View>(R.id.island_battery_container)
+    private val undoButton = islandView.findViewById<ImageButton>(R.id.island_action_button)
+    private val details = islandView.findViewById<View>(R.id.island_details)
+    private val detailsText = islandView.findViewById<TextView>(R.id.island_details_text)
+    private val handler = Handler(Looper.getMainLooper())
     private var params: WindowManager.LayoutParams? = null
-
-    private var initialY = 0f
-    private var initialTouchY = 0f
-    private var lastTouchY = 0f
-    private var velocityTracker: VelocityTracker? = null
-    private var isBeingDragged = false
-    private var autoCloseHandler: Handler? = null
+    private var transitionAnimator: Animator? = null
+    private var heightAnimator: ValueAnimator? = null
+    private var productAnimation: AnimatedImageDrawable? = null
+    private var loadedAnimation = 0
+    private var receiverRegistered = false
+    private var configurationReceiverRegistered = false
+    private var isClosing = false
+    private var expanded = false
     private var autoCloseRunnable: Runnable? = null
-    private var initialHeight = 0
-    private var screenHeight = 0
-    private var isDraggingDown = false
-    private var lastMoveTime = 0L
-    private var yMovement = 0f
-    private var dragDistance = 0f
+    private var longPressRunnable: Runnable? = null
+    private var tracker: VelocityTracker? = null
+    private var downX = 0f
+    private var downY = 0f
+    private var dragged = false
+    private var longPressed = false
+    private var batteryLevel: Int? = null
+    private var batteries: List<Battery>? = null
+    private var previewLevel: Int? = null
+    private var currentType = IslandType.CONNECTED
+    private var reversed = false
+    private var availableHeight = 0
+    private val touchSlop = ViewConfiguration.get(context).scaledTouchSlop
 
-    private var initialConnectedTextY = 0f
-    private var initialDeviceTextY = 0f
-    private var initialBatteryViewY = 0f
-    private var initialVideoViewY = 0f
-    private var initialTextSeparation = 0f
-
-    private val containerView = FrameLayout(context)
-
-    private lateinit var springAnimation: SpringAnimation
-    private val flingAnimator = ValueAnimator()
+    val isVisible: Boolean get() = containerView.parent != null && containerView.visibility == View.VISIBLE
 
     private val batteryReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
-            if (intent?.action == AirPodsNotifications.BATTERY_DATA) {
-                val batteryList = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                    intent.getParcelableArrayListExtra("data", Battery::class.java)
-                } else {
-                    @Suppress("DEPRECATION")
-                    intent.getParcelableArrayListExtra("data")
+            when (intent?.action) {
+                AirPodsNotifications.BATTERY_DATA -> {
+                    batteries = intent.getParcelableArrayListExtra("data", Battery::class.java) ?: return
+                    renderBattery()
                 }
-                updateBatteryDisplay(batteryList)
-            } else if (intent?.action == AirPodsNotifications.DISCONNECT_RECEIVERS) {
-                try {
-                    context?.unregisterReceiver(this)
-                } catch (e: Exception) {
-                    e.printStackTrace()
-                }
+                AirPodsNotifications.DISCONNECT_RECEIVERS -> forceClose()
+            }
+        }
+    }
+    private val configurationReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (isVisible && !isClosing) {
+                cancelHeightAnimation()
+                updatePlacement()
+                if (expanded) constrainDetails()
+                updateWindow()
             }
         }
     }
 
-    val isVisible: Boolean
-        get() = containerView.parent != null && containerView.visibility == View.VISIBLE
-
-    @SuppressLint("SetTextI18n")
-    private fun updateBatteryDisplay(batteryList: ArrayList<Battery>?) {
-        if (batteryList == null || batteryList.isEmpty()) return
-
-        val leftBattery = batteryList.find { it.component == BatteryComponent.LEFT }
-        val rightBattery = batteryList.find { it.component == BatteryComponent.RIGHT }
-
-        val leftLevel = leftBattery?.level ?: 0
-        val rightLevel = rightBattery?.level ?: 0
-        leftBattery?.status ?: BatteryStatus.DISCONNECTED
-        rightBattery?.status ?: BatteryStatus.DISCONNECTED
-
-        val batteryText = islandView.findViewById<TextView>(R.id.island_battery_text)
-        val batteryProgressBar = islandView.findViewById<ProgressBar>(R.id.island_battery_progress)
-
-        val displayBatteryLevel = when {
-            leftLevel > 0 && rightLevel > 0 -> minOf(leftLevel, rightLevel)
-            leftLevel > 0 -> leftLevel
-            rightLevel > 0 -> rightLevel
-            else -> null
+    init {
+        listOf(nameView, statusView, detailsText,
+            islandView.findViewById<TextView>(R.id.island_open_button),
+            islandView.findViewById<TextView>(R.id.island_close_button)
+        ).forEach { it.typeface = AppFonts.typeface(context) }
+        batteryText.typeface = AppFonts.typeface(context, 700)
+        val badgeDp = (44 * context.resources.configuration.fontScale.coerceIn(1f, 1.4f)).toInt()
+        batteryContainer.layoutParams = batteryContainer.layoutParams.apply {
+            width = dp(badgeDp); height = dp(badgeDp)
         }
+        val textInset = dp(badgeDp / 6 + 1)
+        batteryText.setPadding(textInset, 0, textInset, 0)
+        containerView.setOnClickListener { openApp() }
+        containerView.setOnLongClickListener { setExpanded(!expanded); true }
+        islandView.findViewById<View>(R.id.island_open_button).setOnClickListener { openApp() }
+        islandView.findViewById<View>(R.id.island_close_button).setOnClickListener { close() }
+        containerView.accessibilityDelegate = object : View.AccessibilityDelegate() {
+            override fun onInitializeAccessibilityNodeInfo(host: View, info: AccessibilityNodeInfo) {
+                super.onInitializeAccessibilityNodeInfo(host, info)
+                info.className = "android.widget.Button"
+                info.addAction(AccessibilityNodeInfo.AccessibilityAction(
+                    AccessibilityNodeInfo.ACTION_CLICK, context.getString(R.string.island_open_app)))
+                info.addAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_DISMISS)
+                info.addAction(if (expanded) AccessibilityNodeInfo.AccessibilityAction.ACTION_COLLAPSE
+                    else AccessibilityNodeInfo.AccessibilityAction.ACTION_EXPAND)
+            }
+            override fun performAccessibilityAction(host: View, action: Int, arguments: android.os.Bundle?): Boolean =
+                when (action) {
+                    AccessibilityNodeInfo.ACTION_DISMISS -> { close(); true }
+                    AccessibilityNodeInfo.ACTION_EXPAND -> { setExpanded(true); true }
+                    AccessibilityNodeInfo.ACTION_COLLAPSE -> { setExpanded(false); true }
+                    else -> super.performAccessibilityAction(host, action, arguments)
+                }
+        }
+        installGestures()
+    }
 
-        if (displayBatteryLevel != null) {
-            batteryText.text = "$displayBatteryLevel%"
-            batteryProgressBar.progress = displayBatteryLevel
-            batteryProgressBar.isIndeterminate = false
-        } else {
-            batteryText.text = "?"
-            batteryProgressBar.progress = 0
-            batteryProgressBar.isIndeterminate = false
+    /** A failed attachment never leaves a phantom open state in the host. */
+    fun show(name: String, batteryPercentage: Int, context: Context, type: IslandType = IslandType.CONNECTED,
+             reversed: Boolean = false, otherDeviceName: String? = null): Boolean {
+        if (containerView.parent != null || isClosing) return false
+        try {
+            currentType = type
+            this.reversed = reversed
+            previewLevel = batteryPercentage.takeIf { it in 0..100 }
+            batteries = if (observeDeviceEvents) ServiceManager.getService()?.getBattery() else null
+            expanded = false
+            details.visibility = View.GONE
+            nameView.maxLines = 1
+            nameView.text = name
+            statusView.text = context.getString(when (type) {
+                IslandType.CONNECTED -> R.string.island_connected_text
+                IslandType.TAKING_OVER -> R.string.island_taking_over_text
+                IslandType.MOVED_TO_REMOTE -> R.string.island_moved_to_remote_text
+                IslandType.MOVED_TO_OTHER_DEVICE -> if (reversed) R.string.island_moved_to_other_device_reversed_text
+                    else R.string.island_moved_to_other_device_text
+            }, otherDeviceName?.takeIf { it.isNotBlank() } ?: context.getString(R.string.island_other_device))
+            resetTransforms()
+            applyShape()
+            renderBattery()
+            params = WindowManager.LayoutParams(-1, -2, WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
+                    WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN, PixelFormat.TRANSLUCENT).apply {
+                gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
+                layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
+                title = "LibrePods Dynamic Island"
+            }
+            updatePlacement()
+            windowManager.addView(containerView, params)
+            this.context.applicationContext.registerReceiver(configurationReceiver,
+                IntentFilter(Intent.ACTION_CONFIGURATION_CHANGED), Context.RECEIVER_NOT_EXPORTED)
+            configurationReceiverRegistered = true
+            if (observeDeviceEvents) {
+                this.context.registerReceiver(batteryReceiver, IntentFilter(AirPodsNotifications.BATTERY_DATA).apply {
+                    addAction(AirPodsNotifications.DISCONNECT_RECEIVERS)
+                }, Context.RECEIVER_NOT_EXPORTED)
+                receiverRegistered = true
+                ServiceManager.getService()?.sendBatteryBroadcast()
+            }
+            productAnimation?.start()
+            animateEntry()
+            resetAutoCloseTimer()
+            return isVisible
+        } catch (failure: Exception) {
+            Log.e(TAG, "Unable to show island overlay", failure)
+            cleanup()
+            return false
         }
     }
 
-    @SuppressLint("SetTextI18s", "ClickableViewAccessibility", "UnspecifiedRegisterReceiverFlag",
-        "SetTextI18n"
-    )
-    fun show(name: String, batteryPercentage: Int, context: Context, type: IslandType = IslandType.CONNECTED, reversed: Boolean = false, otherDeviceName: String? = null) {
-        if (ServiceManager.getService()?.islandOpen == true) return
-        else ServiceManager.getService()?.islandOpen = true
+    private fun updatePlacement() {
+        val metrics = windowManager.maximumWindowMetrics
+        val safe = metrics.windowInsets.getInsetsIgnoringVisibility(
+            WindowInsets.Type.systemBars() or WindowInsets.Type.displayCutout())
+        val usableWidth = (metrics.bounds.width() - safe.left - safe.right - dp(24)).coerceAtLeast(1)
+        availableHeight = (metrics.bounds.height() - safe.top - safe.bottom - dp(8)).coerceAtLeast(1)
+        params?.apply {
+            width = minOf(dp(420), usableWidth)
+            height = WindowManager.LayoutParams.WRAP_CONTENT
+            x = (safe.left - safe.right) / 2
+            y = safe.top + dp(4)
+        }
+    }
 
-        val displayMetrics = Resources.getSystem().displayMetrics
-        val width = (displayMetrics.widthPixels * 0.95).toInt()
-        screenHeight = displayMetrics.heightPixels
-
-        val batteryList = ServiceManager.getService()?.getBattery()
-        val batteryText = islandView.findViewById<TextView>(R.id.island_battery_text)
-        val batteryProgressBar = islandView.findViewById<ProgressBar>(R.id.island_battery_progress)
-
-        val displayBatteryLevel = if (batteryList != null) {
-            val leftBattery = batteryList.find { it.component == BatteryComponent.LEFT }
-            val rightBattery = batteryList.find { it.component == BatteryComponent.RIGHT }
-
-            when {
-                (leftBattery?.level ?: 0) > 0 && (rightBattery?.level ?: 0) > 0 ->
-                    minOf(leftBattery!!.level, rightBattery!!.level)
-                (leftBattery?.level ?: 0) > 0 -> leftBattery!!.level
-                (rightBattery?.level ?: 0) > 0 -> rightBattery!!.level
-                batteryPercentage > 0 -> batteryPercentage
-                else -> null
-            }
-        } else if (batteryPercentage > 0) {
-            batteryPercentage
+    private fun renderBattery() {
+        batteryLevel = if (observeDeviceEvents && batteries != null) batteries!!.combinedBudsBattery()?.level else previewLevel
+        val showUndo = currentType == IslandType.MOVED_TO_OTHER_DEVICE && !reversed
+        undoButton.visibility = if (showUndo) View.VISIBLE else View.GONE
+        batteryContainer.visibility = if (showUndo) View.GONE else View.VISIBLE
+        undoButton.setOnClickListener {
+            if (observeDeviceEvents) ServiceManager.getService()?.takeOver("reverse")
+            close()
+        }
+        val color = when {
+            batteryLevel == null -> Color.rgb(152, 152, 157)
+            batteryLevel!! <= 20 -> Color.rgb(255, 69, 58)
+            else -> Color.rgb(48, 209, 88)
+        }
+        batteryText.text = batteryLevel?.let { context.getString(R.string.popup_battery_percent, it) } ?: "?"
+        batteryText.setTextColor(color)
+        batteryProgress.progressTintList = android.content.res.ColorStateList.valueOf(color)
+        batteryProgress.progress = batteryLevel ?: 0
+        val summary = if (!observeDeviceEvents) {
+            batteryLevel?.let { context.getString(R.string.island_preview_battery, it) }
+                ?: context.getString(R.string.battery_unavailable)
         } else {
+            val known = batteries.orEmpty().filter { it.hasReportedLevel() }
+            if (known.isEmpty()) context.getString(R.string.battery_unavailable) else known.joinToString("\n") { battery ->
+                val label = context.getString(when (battery.component) {
+                    BatteryComponent.LEFT -> R.string.left
+                    BatteryComponent.RIGHT -> R.string.right
+                    else -> R.string.case_alt
+                })
+                context.getString(if (battery.status == BatteryStatus.CHARGING) R.string.popup_battery_charging
+                    else R.string.popup_battery_level, label, battery.level)
+            }
+        }
+        // Expanded details preserve the full name when the compact title has been ellipsized.
+        detailsText.text = nameView.text.toString() + "\n" + summary
+        loadProductAnimation(if ((batteryLevel ?: 100) <= 20) R.raw.airpods_pro3_spin_amber else R.raw.airpods_pro3_spin_green)
+    }
+
+    private fun loadProductAnimation(resource: Int) {
+        if (resource == loadedAnimation && productAnimation != null) return
+        productAnimation?.stop()
+        productAnimation = try {
+            (ImageDecoder.decodeDrawable(ImageDecoder.createSource(context.resources, resource)) { decoder, info, _ ->
+                val width = minOf(info.size.width, dp(84))
+                decoder.setTargetSize(width, (width * info.size.height / info.size.width).coerceAtLeast(1))
+            } as? AnimatedImageDrawable)?.apply { repeatCount = AnimatedImageDrawable.REPEAT_INFINITE }
+        } catch (failure: Exception) {
+            Log.e(TAG, "Unable to decode Pro 3 animation", failure)
             null
         }
+        loadedAnimation = resource
+        if (productAnimation == null) product.setImageResource(R.drawable.airpods_pro3_apart_green)
+        else product.setImageDrawable(productAnimation)
+        if (isVisible) productAnimation?.start()
+    }
 
-        if (displayBatteryLevel != null) {
-            batteryText.text = "$displayBatteryLevel%"
-            batteryProgressBar.progress = displayBatteryLevel
-        } else {
-            batteryText.text = "?"
-            batteryProgressBar.progress = 0
+    private fun animateEntry() {
+        transitionAnimator = ObjectAnimator.ofPropertyValuesHolder(containerView,
+            PropertyValuesHolder.ofFloat(View.ALPHA, 0f, 1f),
+            PropertyValuesHolder.ofFloat(View.SCALE_X, .96f, 1f),
+            PropertyValuesHolder.ofFloat(View.SCALE_Y, .96f, 1f),
+            PropertyValuesHolder.ofFloat(View.TRANSLATION_Y, -dp(8).toFloat(), 0f)).apply {
+            duration = 280
+            interpolator = DecelerateInterpolator(1.6f)
+            addListener(object : AnimatorListenerAdapter() {
+                override fun onAnimationEnd(animation: Animator) { refreshSummary() }
+            })
+            start()
         }
+    }
 
-        batteryProgressBar.isIndeterminate = false
-        islandView.findViewById<TextView>(R.id.island_device_name).text = name
-
-        val actionButton = islandView.findViewById<ImageButton>(R.id.island_action_button)
-        val batteryBg = islandView.findViewById<ProgressBar>(R.id.island_battery_bg)
-        if (type == IslandType.MOVED_TO_OTHER_DEVICE && !reversed) {
-            actionButton.visibility = View.VISIBLE
-            actionButton.setOnClickListener {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                    ServiceManager.getService()?.takeOver("reverse")
-                }
-                close()
-            }
-            batteryText.visibility = View.GONE
-            batteryProgressBar.visibility = View.GONE
-            batteryBg.visibility = View.GONE
-        } else {
-            actionButton.visibility = View.GONE
-            batteryText.visibility = View.VISIBLE
-            batteryProgressBar.visibility = View.VISIBLE
-            batteryBg.visibility = View.VISIBLE
-        }
-
-        val batteryIntentFilter = IntentFilter(AirPodsNotifications.BATTERY_DATA)
-        batteryIntentFilter.addAction(AirPodsNotifications.DISCONNECT_RECEIVERS)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            context.registerReceiver(batteryReceiver, batteryIntentFilter, Context.RECEIVER_EXPORTED)
-        } else {
-            context.registerReceiver(batteryReceiver, batteryIntentFilter)
-        }
-
-        ServiceManager.getService()?.sendBatteryBroadcast()
-
-        containerView.removeAllViews()
-        val containerParams = FrameLayout.LayoutParams(
-            FrameLayout.LayoutParams.MATCH_PARENT,
-            FrameLayout.LayoutParams.WRAP_CONTENT
-        )
-
-        containerView.addView(islandView, containerParams)
-
-        params = WindowManager.LayoutParams(
-            width,
-            WindowManager.LayoutParams.WRAP_CONTENT,
-            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
-            PixelFormat.TRANSLUCENT
-        ).apply {
-            gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL
-        }
-
-        islandView.visibility = View.VISIBLE
-        containerView.visibility = View.VISIBLE
-
+    @SuppressLint("ClickableViewAccessibility")
+    private fun installGestures() {
         containerView.setOnTouchListener { _, event ->
-            when (event.action) {
+            if (isClosing) return@setOnTouchListener true
+            when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
-                    autoCloseHandler?.removeCallbacks(autoCloseRunnable ?: return@setOnTouchListener false)
-                    flingAnimator.cancel()
-
-                    velocityTracker?.recycle()
-                    velocityTracker = VelocityTracker.obtain()
-                    velocityTracker?.addMovement(event)
-
-                    initialY = containerView.translationY
-                    initialTouchY = event.rawY
-                    lastTouchY = event.rawY
-                    initialHeight = islandView.height
-                    isBeingDragged = false
-                    isDraggingDown = false
-                    lastMoveTime = System.currentTimeMillis()
-                    dragDistance = 0f
-
-                    captureInitialPositions()
-
+                    cancelAutoCloseTimer()
+                    cancelTransition()
+                    resetTransforms()
+                    tracker?.recycle()
+                    tracker = VelocityTracker.obtain().also { it.addMovement(event) }
+                    downX = event.rawX; downY = event.rawY; dragged = false; longPressed = false
+                    longPressRunnable = Runnable {
+                        if (!dragged && !isClosing && isVisible) {
+                            longPressed = true
+                            containerView.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+                            containerView.performLongClick()
+                        }
+                    }.also { handler.postDelayed(it, ViewConfiguration.getLongPressTimeout().toLong()) }
                     true
                 }
                 MotionEvent.ACTION_MOVE -> {
-                    velocityTracker?.addMovement(event)
-                    val deltaY = event.rawY - initialTouchY
-                    val moveDelta = event.rawY - lastTouchY
-                    dragDistance += abs(moveDelta)
-
-                    isDraggingDown = moveDelta > 0
-
-                    val currentTime = System.currentTimeMillis()
-                    val timeDelta = currentTime - lastMoveTime
-                    if (timeDelta > 0) {
-                        yMovement = moveDelta / timeDelta * 10
+                    tracker?.addMovement(event)
+                    val dy = event.rawY - downY
+                    if (abs(dy) > touchSlop || abs(event.rawX - downX) > touchSlop) {
+                        dragged = true
+                        cancelLongPress()
+                        containerView.translationY = if (dy < 0) dy * .65f else dy.coerceAtMost(dp(60).toFloat()) * .3f
                     }
-                    lastMoveTime = currentTime
-
-                    if (abs(deltaY) > 5 || isBeingDragged) {
-                        isBeingDragged = true
-
-                        // Cancel auto close timer when dragging starts
-                        autoCloseHandler?.removeCallbacks(autoCloseRunnable ?: return@setOnTouchListener false)
-
-                        val dampedDeltaY = if (deltaY > 0) {
-                            initialY + (deltaY * 0.6f)
-                        } else {
-                            initialY + (deltaY * 0.9f)
-                        }
-                        containerView.translationY = dampedDeltaY
-
-                        if (isDraggingDown && deltaY > 0) {
-                            val stretchAmount = (deltaY * 0.5f).coerceAtMost(200f)
-                            applyCustomStretchEffect(stretchAmount)
-                        }
-                    }
-
-                    lastTouchY = event.rawY
                     true
                 }
-                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                    velocityTracker?.addMovement(event)
-                    velocityTracker?.computeCurrentVelocity(1000)
-                    val yVelocity = velocityTracker?.yVelocity ?: 0f
-
-                    if (isBeingDragged) {
-                        val currentTranslationY = containerView.translationY
-                        abs(yVelocity) > 800
-                        val significantDrag = abs(dragDistance) > 80
-
-                        when {
-                            yVelocity < -1200 || (currentTranslationY < -80 && !isDraggingDown) -> {
-                                animateDismissWithInertia(yVelocity)
-                            }
-                            yVelocity > 1200 || (isDraggingDown && significantDrag) -> {
-                                animateExpandWithStretch(yVelocity)
-                            }
-                            else -> {
-                                springBackWithInertia(yVelocity)
-                            }
-                        }
-                    } else if (dragDistance < 10) {
-                        resetAutoCloseTimer()
+                MotionEvent.ACTION_CANCEL -> {
+                    cancelLongPress()
+                    recycleTracker()
+                    restoreAfterDrag()
+                    true
+                }
+                MotionEvent.ACTION_UP -> {
+                    cancelLongPress()
+                    tracker?.addMovement(event)
+                    tracker?.computeCurrentVelocity(1000)
+                    val velocity = tracker?.yVelocity ?: 0f
+                    val dy = event.rawY - downY
+                    recycleTracker()
+                    when {
+                        dragged && (dy < -dp(44) || (dy < -dp(12) && velocity < -dp(900))) -> close()
+                        dragged && dy > dp(44) -> { resetTransforms(); setExpanded(true) }
+                        dragged || longPressed -> restoreAfterDrag()
+                        else -> containerView.performClick()
                     }
-
-                    velocityTracker?.recycle()
-                    velocityTracker = null
-                    isBeingDragged = false
                     true
                 }
                 else -> false
             }
         }
+    }
 
-        when (type) {
-            IslandType.CONNECTED -> {
-                islandView.findViewById<TextView>(R.id.island_connected_text).text = context.getString(R.string.island_connected_text)
-            }
-            IslandType.TAKING_OVER -> {
-                islandView.findViewById<TextView>(R.id.island_connected_text).text = context.getString(R.string.island_taking_over_text)
-            }
-            IslandType.MOVED_TO_REMOTE -> {
-                islandView.findViewById<TextView>(R.id.island_connected_text).text = context.getString(R.string.island_moved_to_remote_text)
-            }
-            IslandType.MOVED_TO_OTHER_DEVICE -> {
-                if (otherDeviceName == null || otherDeviceName.isEmpty()) {
-                    e("IslandWindow", "Other device name is null or empty for MOVED_TO_OTHER_DEVICE type")
-                }
-                if (reversed) {
-                    islandView.findViewById<TextView>(R.id.island_connected_text).text = context.getString(R.string.island_moved_to_other_device_reversed_text)
-                } else {
-                    islandView.findViewById<TextView>(R.id.island_connected_text).text = context.getString(R.string.island_moved_to_other_device_text, otherDeviceName)
-                }
-            }
-        }
-
-        val videoView = islandView.findViewById<VideoView>(R.id.island_video_view)
-        val videoUri = "android.resource://me.kavishdevar.librepods/${R.raw.island}".toUri()
-        videoView.setAudioFocusRequest(AudioManager.AUDIOFOCUS_NONE)
-        videoView.setVideoURI(videoUri)
-        videoView.setOnPreparedListener { mediaPlayer ->
-            mediaPlayer.isLooping = true
-            videoView.start()
-        }
-
-        try {
-            windowManager.addView(containerView, params)
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
-
-        islandView.post {
-            initialHeight = islandView.height
-            captureInitialPositions()
-        }
-
-        springAnimation = SpringAnimation(containerView, DynamicAnimation.TRANSLATION_Y, 0f).apply {
-            spring = SpringForce(0f)
-                .setDampingRatio(SpringForce.DAMPING_RATIO_MEDIUM_BOUNCY)
-                .setStiffness(SpringForce.STIFFNESS_MEDIUM)
-        }
-
-        val scaleX = PropertyValuesHolder.ofFloat(View.SCALE_X, 0.5f, 1f)
-        val scaleY = PropertyValuesHolder.ofFloat(View.SCALE_Y, 0.5f, 1f)
-        val translationY = PropertyValuesHolder.ofFloat(View.TRANSLATION_Y, -200f, 0f)
-        ObjectAnimator.ofPropertyValuesHolder(containerView, scaleX, scaleY, translationY).apply {
-            duration = 700
-            interpolator = AnticipateOvershootInterpolator()
+    private fun restoreAfterDrag() {
+        transitionAnimator = ObjectAnimator.ofFloat(containerView, View.TRANSLATION_Y, containerView.translationY, 0f).apply {
+            duration = 180
+            interpolator = DecelerateInterpolator()
             start()
         }
-
         resetAutoCloseTimer()
     }
 
-    private fun captureInitialPositions() {
-        val connectedText = islandView.findViewById<TextView>(R.id.island_connected_text)
-        val deviceText = islandView.findViewById<TextView>(R.id.island_device_name)
-        val batteryView = islandView.findViewById<FrameLayout>(R.id.island_battery_container)
-        val videoView = islandView.findViewById<VideoView>(R.id.island_video_view)
-
-        connectedText.post {
-            initialConnectedTextY = connectedText.y
-            initialDeviceTextY = deviceText.y
-            initialTextSeparation = deviceText.y - (connectedText.y + connectedText.height)
-
-            if (batteryView != null) initialBatteryViewY = batteryView.y
-            initialVideoViewY = videoView.y
-        }
-    }
-
-    private fun applyCustomStretchEffect(stretchAmount: Float) {
-        try {
-            val mainLayout = islandView.findViewById<LinearLayout>(R.id.island_window_layout)
-            islandView.findViewById<TextView>(R.id.island_connected_text)
-            val deviceText = islandView.findViewById<TextView>(R.id.island_device_name)
-            islandView.findViewById<FrameLayout>(R.id.island_battery_container)
-            islandView.findViewById<VideoView>(R.id.island_video_view)
-
-            val stretchFactor = 1f + (stretchAmount / 300f).coerceAtMost(4.0f)
-            val newMinHeight = (initialHeight * stretchFactor).toInt()
-            mainLayout.minimumHeight = newMinHeight
-
-            val textMarginIncrease = (stretchAmount * 0.8f).toInt()
-
-            val deviceTextParams = deviceText.layoutParams as LinearLayout.LayoutParams
-            deviceTextParams.topMargin = textMarginIncrease
-            deviceText.layoutParams = deviceTextParams
-
-            val background = mainLayout.background
-            if (background is GradientDrawable) {
-                val cornerRadius = 56f
-                background.cornerRadius = cornerRadius
-            }
-
-            if (params != null) {
-                params!!.height = screenHeight
-
-                val containerParams = containerView.layoutParams
-                containerParams.height = screenHeight
-                containerView.layoutParams = containerParams
-
-                try {
-                    windowManager.updateViewLayout(containerView, params)
-                } catch (e: Exception) {
-                    e.printStackTrace()
+    private fun setExpanded(value: Boolean) {
+        if (!isVisible || isClosing) return
+        cancelHeightAnimation()
+        val from = islandView.height
+        expanded = value
+        details.visibility = if (expanded) View.VISIBLE else View.GONE
+        nameView.maxLines = 1
+        if (expanded) constrainDetails()
+        applyShape()
+        islandView.measure(View.MeasureSpec.makeMeasureSpec(params!!.width, View.MeasureSpec.EXACTLY),
+            View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED))
+        val to = islandView.measuredHeight
+        if (from > 0 && from != to) {
+            heightAnimator = ValueAnimator.ofInt(from, to).apply {
+                duration = 220
+                interpolator = DecelerateInterpolator(1.4f)
+                addUpdateListener {
+                    islandView.layoutParams = islandView.layoutParams.apply { height = it.animatedValue as Int }
+                    params?.height = it.animatedValue as Int
+                    updateWindow()
                 }
-            }
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
-    }
-
-    private fun resetAutoCloseTimer() {
-        autoCloseHandler?.removeCallbacks(autoCloseRunnable ?: return)
-        autoCloseHandler = Handler(Looper.getMainLooper())
-        autoCloseRunnable = Runnable { close() }
-        autoCloseHandler?.postDelayed(autoCloseRunnable!!, 4500)
-    }
-
-    private fun springBackWithInertia(velocity: Float) {
-        springAnimation.cancel()
-        flingAnimator.cancel()
-
-        springAnimation.setStartVelocity(velocity)
-
-        val baseStiffness = SpringForce.STIFFNESS_MEDIUM
-        val dynamicStiffness = baseStiffness * (1f + (abs(velocity) / 3000f))
-        springAnimation.spring = SpringForce(0f)
-            .setDampingRatio(SpringForce.DAMPING_RATIO_MEDIUM_BOUNCY)
-            .setStiffness(dynamicStiffness)
-
-        resetStretchEffects()
-
-        if (params != null) {
-            params!!.height = WindowManager.LayoutParams.WRAP_CONTENT
-            try {
-                windowManager.updateViewLayout(containerView, params)
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
-        }
-
-        springAnimation.start()
-    }
-
-    private fun resetStretchEffects() {
-        try {
-            val mainLayout = islandView.findViewById<LinearLayout>(R.id.island_window_layout)
-            val deviceText = islandView.findViewById<TextView>(R.id.island_device_name)
-
-            val heightAnimator = ValueAnimator.ofInt(mainLayout.minimumHeight, initialHeight)
-            heightAnimator.duration = 300
-            heightAnimator.interpolator = OvershootInterpolator(1.5f)
-            heightAnimator.addUpdateListener { animation ->
-                mainLayout.minimumHeight = animation.animatedValue as Int
-            }
-
-            val deviceTextParams = deviceText.layoutParams as LinearLayout.LayoutParams
-            val textMarginAnimator = ValueAnimator.ofInt(deviceTextParams.topMargin, 0)
-            textMarginAnimator.duration = 300
-            textMarginAnimator.interpolator = OvershootInterpolator(1.5f)
-            textMarginAnimator.addUpdateListener { animation ->
-                deviceTextParams.topMargin = animation.animatedValue as Int
-                deviceText.layoutParams = deviceTextParams
-            }
-
-            heightAnimator.start()
-            textMarginAnimator.start()
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
-    }
-
-    private fun animateDismissWithInertia(velocity: Float) {
-        springAnimation.cancel()
-        flingAnimator.cancel()
-
-        val baseDistance = -screenHeight
-        val velocityFactor = (abs(velocity) / 2000f).coerceIn(0.5f, 2.0f)
-        val targetDistance = baseDistance * velocityFactor
-
-        val baseDuration = 400L
-        val velocityDurationFactor = (1500f / (abs(velocity) + 1500f))
-        val duration = (baseDuration * velocityDurationFactor).toLong().coerceIn(200L, 500L)
-
-        flingAnimator.setFloatValues(containerView.translationY, targetDistance)
-        flingAnimator.duration = duration
-        flingAnimator.addUpdateListener { animation ->
-            containerView.translationY = animation.animatedValue as Float
-
-            val progress = animation.animatedFraction
-            containerView.scaleX = 1f - (progress * 0.5f)
-            containerView.scaleY = 1f - (progress * 0.5f)
-
-            containerView.alpha = 1f - progress
-        }
-        flingAnimator.addListener(object : AnimatorListenerAdapter() {
-            override fun onAnimationEnd(animation: Animator) {
-                forceClose()
-            }
-        })
-
-        flingAnimator.interpolator = DecelerateInterpolator(1.2f)
-        flingAnimator.start()
-    }
-
-    private fun animateExpandWithStretch(velocity: Float) {
-        springAnimation.cancel()
-        flingAnimator.cancel()
-
-        val baseDuration = 600L
-        val velocityFactor = (1800f / (abs(velocity) + 1800f)).coerceIn(0.5f, 1.5f)
-        val expandDuration = (baseDuration * velocityFactor).toLong().coerceIn(300L, 700L)
-
-        if (params != null) {
-            params!!.height = screenHeight
-            try {
-                windowManager.updateViewLayout(containerView, params)
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
-        }
-
-        val containerAnimator = ValueAnimator.ofFloat(containerView.translationY, screenHeight * 0.6f)
-        containerAnimator.duration = expandDuration
-        containerAnimator.interpolator = DecelerateInterpolator(0.8f)
-        containerAnimator.addUpdateListener { animation ->
-            containerView.translationY = animation.animatedValue as Float
-        }
-
-        val stretchAnimator = ValueAnimator.ofFloat(0f, 1f)
-        stretchAnimator.duration = expandDuration
-        stretchAnimator.interpolator = OvershootInterpolator(0.5f)
-        stretchAnimator.addUpdateListener { animation ->
-            val progress = animation.animatedValue as Float
-            animateCustomStretch(progress)
-        }
-
-        val normalizeAnimator = ValueAnimator.ofFloat(1.0f, 0.0f)
-        normalizeAnimator.duration = 300
-        normalizeAnimator.startDelay = expandDuration - 150
-        normalizeAnimator.interpolator = AccelerateInterpolator(1.2f)
-        normalizeAnimator.addUpdateListener { animation ->
-            val progress = animation.animatedValue as Float
-            containerView.alpha = progress
-
-            if (progress < 0.7f) {
-                islandView.findViewById<VideoView>(R.id.island_video_view).visibility = View.GONE
-            }
-        }
-        normalizeAnimator.addListener(object : AnimatorListenerAdapter() {
-            override fun onAnimationEnd(animation: Animator) {
-                ServiceManager.getService()?.startMainActivity()
-                forceClose()
-            }
-        })
-
-        containerAnimator.start()
-        stretchAnimator.start()
-        normalizeAnimator.start()
-    }
-
-    private fun animateCustomStretch(progress: Float) {
-        try {
-            val mainLayout = islandView.findViewById<LinearLayout>(R.id.island_window_layout)
-            val connectedText = islandView.findViewById<TextView>(R.id.island_connected_text)
-            val deviceText = islandView.findViewById<TextView>(R.id.island_device_name)
-
-            val targetHeight = (screenHeight * 0.7f).toInt()
-            val currentHeight = initialHeight + ((targetHeight - initialHeight) * progress)
-            mainLayout.minimumHeight = currentHeight.toInt()
-
-            val mainLayoutParams = mainLayout.layoutParams
-            mainLayoutParams.height = LinearLayout.LayoutParams.MATCH_PARENT
-            mainLayout.layoutParams = mainLayoutParams
-
-            val targetMargin = (400 * progress).toInt()
-            val deviceTextParams = deviceText.layoutParams as LinearLayout.LayoutParams
-            deviceTextParams.topMargin = targetMargin
-            deviceText.layoutParams = deviceTextParams
-
-            val baseTextSize = 24f
-            deviceText.textSize = baseTextSize + (progress * 8f)
-
-            val baseSubTextSize = 16f
-            connectedText.textSize = baseSubTextSize + (progress * 4f)
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
-    }
-
-    fun close() {
-        if (Looper.myLooper() != Looper.getMainLooper()) {
-            Handler(Looper.getMainLooper()).post { close() }
-            return
-        }
-        try {
-            if (isClosing) return
-            isClosing = true
-
-            try {
-                context.unregisterReceiver(batteryReceiver)
-            } catch (e: Exception) {
-//                e.printStackTrace()
-            }
-
-            ServiceManager.getService()?.islandOpen = false
-            autoCloseHandler?.removeCallbacks(autoCloseRunnable ?: return)
-
-            resetStretchEffects()
-
-            val videoView = islandView.findViewById<VideoView>(R.id.island_video_view)
-            try {
-                videoView.stopPlayback()
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
-
-            val scaleX = PropertyValuesHolder.ofFloat(View.SCALE_X, containerView.scaleX, 0.5f)
-            val scaleY = PropertyValuesHolder.ofFloat(View.SCALE_Y, containerView.scaleY, 0.5f)
-            val translationY = PropertyValuesHolder.ofFloat(View.TRANSLATION_Y, containerView.translationY, -200f)
-            ObjectAnimator.ofPropertyValuesHolder(containerView, scaleX, scaleY, translationY).apply {
-                duration = 700
-                interpolator = AnticipateOvershootInterpolator()
                 addListener(object : AnimatorListenerAdapter() {
                     override fun onAnimationEnd(animation: Animator) {
-                        cleanupAndRemoveView()
+                        islandView.layoutParams = islandView.layoutParams.apply { height = -2 }
+                        params?.height = -2
+                        heightAnimator = null
+                        updateWindow()
+                        refreshSummary()
                     }
                 })
                 start()
             }
-        } catch (e: Exception) {
-            e.printStackTrace()
-            // Even if animation fails, ensure we cleanup
-            cleanupAndRemoveView()
         }
+        resetAutoCloseTimer()
     }
 
-    private fun cleanupAndRemoveView() {
-        if (Looper.myLooper() != Looper.getMainLooper()) {
-            Handler(Looper.getMainLooper()).post { cleanupAndRemoveView() }
-            return
-        }
-        try {
-            containerView.visibility = View.GONE
-        } catch (e: Exception) {
-            e("IslandWindow", "Error setting visibility: $e")
-        }
-        try {
-            if (containerView.parent != null) {
-                windowManager.removeView(containerView)
-            }
-        } catch (e: Exception) {
-            e("IslandWindow", "Error removing view: $e")
-        }
-        isClosing = false
-        // Make sure all animations are canceled
-        try {
-            springAnimation.cancel()
-        } catch (e: Exception) {
-            e("IslandWindow", "Error cancelling spring animation $e")
-        }
-        try {
-            flingAnimator.cancel()
-        } catch (e: Exception) {
-            e("IslandWindow", "Error cancelling fling animation $e")
-        }
+    /** Keep the actions visible; lengthy names and all three batteries scroll in the body. */
+    private fun constrainDetails() {
+        val width = (params!!.width - islandView.paddingLeft - islandView.paddingRight).coerceAtLeast(1)
+        val widthSpec = View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY)
+        val heightSpec = View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED)
+        val summary = islandView.findViewById<View>(R.id.island_summary)
+        val actions = islandView.findViewById<View>(R.id.island_detail_actions)
+        val scroll = islandView.findViewById<View>(R.id.island_details_scroll)
+        val summaryHeight = summary.height.takeIf { it > 0 } ?: summary.measuredHeight
+        actions.measure(widthSpec, heightSpec)
+        scroll.layoutParams = scroll.layoutParams.apply { height = -2 }
+        scroll.measure(widthSpec, heightSpec)
+        val bodyHeight = (availableHeight - islandView.paddingTop - islandView.paddingBottom -
+            summaryHeight - details.paddingTop - actions.measuredHeight).coerceAtLeast(1)
+        scroll.layoutParams = scroll.layoutParams.apply { height = minOf(scroll.measuredHeight, bodyHeight) }
     }
 
+    private fun applyShape() {
+        islandView.background = GradientDrawable().apply {
+            setColor(Color.BLACK)
+            cornerRadius = dp(if (expanded) 28 else 42).toFloat()
+        }
+        islandView.clipToOutline = true
+    }
+    /** Refresh static render nodes after resizing/fading an overlay with an independently animated image. */
+    private fun refreshSummary() {
+        if (!isVisible) return
+        val summary = islandView.findViewById<View>(R.id.island_summary)
+        listOf(summary, nameView, statusView, batteryContainer, batteryText, batteryProgress).forEach {
+            it.requestLayout()
+            it.invalidate()
+        }
+        islandView.invalidate()
+        containerView.invalidate()
+    }
+    private fun updateWindow() {
+        if (containerView.parent != null) runCatching { windowManager.updateViewLayout(containerView, params) }
+            .onFailure { Log.e(TAG, "Unable to resize island", it) }
+    }
+    @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+    private fun openApp() {
+        if (!isVisible || isClosing) return
+        try {
+            if (onOpenApp != null) onOpenApp.invoke()
+            else if (observeDeviceEvents) context.startActivity(Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        } catch (failure: Exception) { Log.e(TAG, "Unable to open AirPods settings", failure) }
+        finally { close() }
+    }
+    private fun resetAutoCloseTimer() {
+        cancelAutoCloseTimer()
+        val flags = AccessibilityManager.FLAG_CONTENT_TEXT or AccessibilityManager.FLAG_CONTENT_ICONS or
+            AccessibilityManager.FLAG_CONTENT_CONTROLS
+        val timeout = accessibilityManager?.getRecommendedTimeoutMillis(autoCloseMillis.coerceAtMost(Int.MAX_VALUE.toLong()).toInt(), flags)
+            ?.toLong() ?: autoCloseMillis
+        autoCloseRunnable = Runnable { close() }.also { handler.postDelayed(it, timeout) }
+    }
+    private fun cancelAutoCloseTimer() { autoCloseRunnable?.let(handler::removeCallbacks); autoCloseRunnable = null }
+    private fun cancelLongPress() { longPressRunnable?.let(handler::removeCallbacks); longPressRunnable = null }
+    private fun recycleTracker() { tracker?.recycle(); tracker = null }
+    private fun cancelTransition() {
+        transitionAnimator?.removeAllListeners(); transitionAnimator?.cancel(); transitionAnimator = null
+    }
+    private fun cancelHeightAnimation() {
+        heightAnimator?.removeAllListeners(); heightAnimator?.removeAllUpdateListeners(); heightAnimator?.cancel(); heightAnimator = null
+        islandView.layoutParams = islandView.layoutParams.apply { height = -2 }
+        params?.height = -2
+    }
+    private fun resetTransforms() {
+        containerView.apply { alpha = 1f; scaleX = 1f; scaleY = 1f; translationY = 0f; visibility = View.VISIBLE }
+        product.visibility = View.VISIBLE
+    }
+    fun close() {
+        if (Looper.myLooper() != Looper.getMainLooper()) { handler.post { close() }; return }
+        if (isClosing) return
+        if (!isVisible) { cleanup(); return }
+        isClosing = true
+        cancelAutoCloseTimer(); cancelLongPress(); cancelHeightAnimation(); cancelTransition()
+        transitionAnimator = ObjectAnimator.ofPropertyValuesHolder(containerView,
+            PropertyValuesHolder.ofFloat(View.ALPHA, containerView.alpha, 0f),
+            PropertyValuesHolder.ofFloat(View.SCALE_X, containerView.scaleX, .96f),
+            PropertyValuesHolder.ofFloat(View.SCALE_Y, containerView.scaleY, .96f),
+            PropertyValuesHolder.ofFloat(View.TRANSLATION_Y, containerView.translationY, -dp(12).toFloat())).apply {
+            duration = 200
+            interpolator = AccelerateInterpolator(1.1f)
+            addListener(object : AnimatorListenerAdapter() { override fun onAnimationEnd(animation: Animator) { cleanup() } })
+            start()
+        }
+    }
     fun forceClose() {
-        if (Looper.myLooper() != Looper.getMainLooper()) {
-            Handler(Looper.getMainLooper()).post { forceClose() }
-            return
-        }
-        try {
-            if (isClosing) return
-            isClosing = true
-
-            try {
-                context.unregisterReceiver(batteryReceiver)
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
-
-            ServiceManager.getService()?.islandOpen = false
-            autoCloseHandler?.removeCallbacks(autoCloseRunnable ?: return)
-
-            // Cancel all ongoing animations
-            springAnimation.cancel()
-            flingAnimator.cancel()
-
-            // Immediately remove the view without animations
-            cleanupAndRemoveView()
-        } catch (e: Exception) {
-            e.printStackTrace()
-            isClosing = false
-        }
+        if (Looper.myLooper() != Looper.getMainLooper()) { handler.post { forceClose() }; return }
+        cleanup()
     }
+    private fun cleanup() {
+        handler.removeCallbacksAndMessages(null)
+        autoCloseRunnable = null; longPressRunnable = null
+        cancelTransition(); cancelHeightAnimation(); recycleTracker()
+        productAnimation?.stop(); productAnimation = null; loadedAnimation = 0
+        product.setImageDrawable(null)
+        if (receiverRegistered) { receiverRegistered = false; runCatching { context.unregisterReceiver(batteryReceiver) } }
+        if (configurationReceiverRegistered) {
+            configurationReceiverRegistered = false
+            runCatching { context.applicationContext.unregisterReceiver(configurationReceiver) }
+        }
+        if (containerView.parent != null) runCatching { windowManager.removeViewImmediate(containerView) }
+            .onFailure { Log.e(TAG, "Unable to remove island", it) }
+        containerView.visibility = View.GONE
+        isClosing = false
+    }
+    private fun dp(value: Int) = (value * context.resources.displayMetrics.density).toInt()
+    private companion object { const val TAG = "IslandWindow" }
 }

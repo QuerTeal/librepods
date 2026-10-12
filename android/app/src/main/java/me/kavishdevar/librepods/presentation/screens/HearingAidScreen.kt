@@ -59,6 +59,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import me.kavishdevar.librepods.R
+import me.kavishdevar.librepods.presentation.components.screenBottomPadding
+import me.kavishdevar.librepods.presentation.components.screenTopPadding
 import me.kavishdevar.librepods.bluetooth.AACPManager
 import me.kavishdevar.librepods.data.parseTransparencySettingsResponse
 import me.kavishdevar.librepods.data.sendTransparencySettings
@@ -70,6 +72,7 @@ import me.kavishdevar.librepods.presentation.theme.DesignSystem
 import me.kavishdevar.librepods.presentation.theme.LocalDesignSystem
 import me.kavishdevar.librepods.presentation.viewmodel.AirPodsViewModel
 import kotlin.io.encoding.ExperimentalEncodingApi
+import me.kavishdevar.librepods.presentation.theme.sfProFamily
 
 private const val TAG = "AccessibilitySettings"
 
@@ -94,8 +97,8 @@ fun HearingAidScreen(viewModel: AirPodsViewModel, onNavigateHearingAidAdjustment
 
 
     val m3eEnabled = LocalDesignSystem.current == DesignSystem.Material
-    val topPadding = if (m3eEnabled) 0.dp else WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 84.dp
-    val bottomPadding = if (m3eEnabled) 0.dp else WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 12.dp
+    val topPadding = screenTopPadding(material = 0.dp)
+    val bottomPadding = screenBottomPadding(material = 0.dp)
 
     Column(
         modifier = Modifier
@@ -149,7 +152,7 @@ fun HearingAidScreen(viewModel: AirPodsViewModel, onNavigateHearingAidAdjustment
                 fontSize = 12.sp,
                 fontWeight = FontWeight.Light,
                 color = (if (isSystemInDarkTheme()) Color.White else Color.Black).copy(alpha = 0.6f),
-                fontFamily = FontFamily(Font(R.font.sf_pro))
+                fontFamily = sfProFamily
             ),
             modifier = Modifier.padding(horizontal = 16.dp)
         )
@@ -202,10 +205,10 @@ fun HearingAidScreen(viewModel: AirPodsViewModel, onNavigateHearingAidAdjustment
 
     ConfirmationDialog(
         showDialog = showDialog,
-        title = "Enable Hearing Aid",
-        message = "Enabling Hearing Aid will disable Headphone Accommodation and Customized Transparency Mode.",
-        confirmText = "Enable",
-        dismissText = "Cancel",
+        title = stringResource(R.string.enable_hearing_aid),
+        message = stringResource(R.string.enable_hearing_aid_message),
+        confirmText = stringResource(R.string.enable),
+        dismissText = stringResource(R.string.cancel),
         onConfirm = {
             showDialog.value = false
             val enrolled = state.controlStates[AACPManager.Companion.ControlCommandIdentifiers.HEARING_AID]?.getOrNull(0) == 0x01.toByte()

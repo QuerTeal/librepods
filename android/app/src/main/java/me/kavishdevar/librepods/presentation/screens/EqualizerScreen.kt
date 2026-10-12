@@ -90,6 +90,11 @@ import com.kyant.backdrop.highlight.Highlight
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.debounce
 import me.kavishdevar.librepods.R
+import me.kavishdevar.librepods.presentation.theme.AppleShape
+import me.kavishdevar.librepods.presentation.components.screenBottomPadding
+import me.kavishdevar.librepods.presentation.components.screenTopPadding
+import me.kavishdevar.librepods.presentation.theme.LocalOneUI
+import me.kavishdevar.librepods.presentation.theme.OneUIText
 import me.kavishdevar.librepods.presentation.components.StyledButton
 import me.kavishdevar.librepods.presentation.components.StyledList
 import me.kavishdevar.librepods.presentation.components.StyledListItem
@@ -102,14 +107,15 @@ import me.kavishdevar.librepods.presentation.viewmodel.demoState
 import kotlin.math.abs
 import kotlin.math.roundToInt
 import kotlin.time.Duration.Companion.milliseconds
+import me.kavishdevar.librepods.presentation.theme.sfProFamily
 
 @Composable
 fun EqualizerRoute(viewModel: AirPodsViewModel) {
     val state by viewModel.uiState.collectAsState()
 
     val m3eEnabled = LocalDesignSystem.current == DesignSystem.Material
-    val topPadding = if (m3eEnabled) 0.dp else WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 84.dp
-    val bottomPadding = if (m3eEnabled) 0.dp else WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 12.dp
+    val topPadding = screenTopPadding(material = 0.dp)
+    val bottomPadding = screenBottomPadding(material = 0.dp)
 
     Box (
         modifier = Modifier
@@ -226,10 +232,7 @@ fun EqualizerScreen(
                     isInteractive = false,
                     enabled = resetButtonEnabled.value
                 ) {
-                    Text(
-                        text = stringResource(R.string.reset),
-                        style = MaterialTheme.typography.bodyMedium
-                    )
+                    Text(text = stringResource(R.string.reset))
                 }
             }
         }
@@ -247,11 +250,30 @@ fun EqualizerCard(
 ) {
     val height = 200.dp
     val maxOffset = with(LocalDensity.current) { height.toPx() } / 2
+    // Apple keeps the warm-to-cool curve; One UI and Material draw it in their accent color.
+    val appleLook = LocalDesignSystem.current == DesignSystem.Apple
+    val accent = MaterialTheme.colorScheme.primary
+    val cardShape = when {
+        LocalOneUI.current -> RoundedCornerShape(26.dp)
+        appleLook -> AppleShape(28.dp)
+        else -> RoundedCornerShape(24.dp)
+    }
+    val bandLabelStyle = when {
+        appleLook -> TextStyle(
+            fontSize = 14.sp,
+            fontFamily = sfProFamily,
+            fontWeight = FontWeight.Bold,
+            color = (if (isSystemInDarkTheme()) Color.White else Color.Black).copy(0.2f),
+            textAlign = TextAlign.Center
+        )
+        LocalOneUI.current -> OneUIText.rowSummary.copy(color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
+        else -> MaterialTheme.typography.labelMedium.copy(color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
+    }
 
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(28.dp))
+            .background(MaterialTheme.colorScheme.surface, cardShape)
     ) {
         val dashColor = if (isSystemInDarkTheme()) Color(0x80AAAAAA) else Color(0x809D9D9D)
 
@@ -259,7 +281,7 @@ fun EqualizerCard(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(28.dp))
+                .background(MaterialTheme.colorScheme.surface, cardShape)
         ) {
             Spacer(modifier = Modifier.height(42.dp))
             //                Row(
@@ -283,7 +305,7 @@ fun EqualizerCard(
             //                            text = "Written into Changes",
             //                            style = TextStyle(
             //                                fontSize = 16.sp,
-            //                                fontFamily = FontFamily(Font(R.font.sf_pro)),
+            //                                fontFamily = sfProFamily,
             //                                fontWeight = FontWeight.Bold,
             //                                color = if (isSystemInDarkTheme()) Color.White else Color.Black
             //                            )
@@ -293,7 +315,7 @@ fun EqualizerCard(
             //                            text = "Avalon Emerson",
             //                            style = TextStyle(
             //                                fontSize = 14.sp,
-            //                                fontFamily = FontFamily(Font(R.font.sf_pro)),
+            //                                fontFamily = sfProFamily,
             //                                fontWeight = FontWeight.Normal,
             //                                color = if (isSystemInDarkTheme()) Color.White else Color.Black
             //                            )
@@ -320,7 +342,7 @@ fun EqualizerCard(
             //                                text = if (p) "􀊄" else "􀊆",
             //                                style = TextStyle(
             //                                    fontSize = 24.sp,
-            //                                    fontFamily = FontFamily(Font(R.font.sf_pro)),
+            //                                    fontFamily = sfProFamily,
             //                                    fontWeight = FontWeight.Normal,
             //                                    color = Color(0xFF0091FF),
             //                                    textAlign = TextAlign.Center
@@ -342,6 +364,7 @@ fun EqualizerCard(
                 modifier = Modifier.fillMaxWidth()
             ) {
                 fun colorFromY(y: Float): Color {
+                    if (!appleLook) return accent
                     val f = ((y + maxOffset) / (2f * maxOffset)).coerceIn(0f, 1f)
                     val stops = listOf(
                         0.0f to Color(0xFFFFA300),
@@ -541,16 +564,8 @@ fun EqualizerCard(
                             modifier = Modifier.weight(1f)
                         ) {
                             Text(
-                                text = "Low".uppercase(),
-                                style = TextStyle(
-                                    fontSize = 14.sp,
-                                    fontFamily = FontFamily(Font(R.font.sf_pro)),
-                                    fontWeight = FontWeight.Bold,
-                                    color = (if (isSystemInDarkTheme()) Color.White else Color.Black).copy(
-                                        0.2f
-                                    ),
-                                    textAlign = TextAlign.Center
-                                ),
+                                text = stringResource(R.string.eq_low).uppercase(),
+                                style = bandLabelStyle,
                                 modifier = Modifier.fillMaxWidth()
                             )
                         }
@@ -558,16 +573,8 @@ fun EqualizerCard(
                             modifier = Modifier.weight(1f)
                         ) {
                             Text(
-                                text = "Mid".uppercase(),
-                                style = TextStyle(
-                                    fontSize = 14.sp,
-                                    fontFamily = FontFamily(Font(R.font.sf_pro)),
-                                    fontWeight = FontWeight.Bold,
-                                    color = (if (isSystemInDarkTheme()) Color.White else Color.Black).copy(
-                                        0.2f
-                                    ),
-                                    textAlign = TextAlign.Center
-                                ),
+                                text = stringResource(R.string.eq_mid).uppercase(),
+                                style = bandLabelStyle,
                                 modifier = Modifier.fillMaxWidth()
                             )
                         }
@@ -575,16 +582,8 @@ fun EqualizerCard(
                             modifier = Modifier.weight(1f)
                         ) {
                             Text(
-                                text = "High".uppercase(),
-                                style = TextStyle(
-                                    fontSize = 14.sp,
-                                    fontFamily = FontFamily(Font(R.font.sf_pro)),
-                                    fontWeight = FontWeight.Bold,
-                                    color = (if (isSystemInDarkTheme()) Color.White else Color.Black).copy(
-                                        0.2f
-                                    ),
-                                    textAlign = TextAlign.Center
-                                ),
+                                text = stringResource(R.string.eq_high).uppercase(),
+                                style = bandLabelStyle,
                                 modifier = Modifier.fillMaxWidth()
                             )
                         }
@@ -623,7 +622,11 @@ fun EqualizerCard(
                                         modifier = Modifier
                                             .size(96.dp)
                                             .then(
-                                                if (it) {
+                                                if (it && !appleLook) {
+                                                    Modifier
+                                                        .padding(28.dp)
+                                                        .background(accent.copy(alpha = 0.16f), CircleShape)
+                                                } else if (it) {
                                                     Modifier.drawBackdrop(
                                                         backdrop = backdrop,
                                                         shape = { CircleShape },

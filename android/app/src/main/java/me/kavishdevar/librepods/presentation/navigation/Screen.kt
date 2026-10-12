@@ -23,7 +23,13 @@ sealed interface Screen: NavKey {
     data object AppSettings: Screen
 
     @Serializable
+    data object Language: Screen
+
+    @Serializable
     data object Troubleshooting: Screen
+
+    @Serializable
+    data object FeatureStatus: Screen
 
     @Serializable
     data object HeadTracking: Screen

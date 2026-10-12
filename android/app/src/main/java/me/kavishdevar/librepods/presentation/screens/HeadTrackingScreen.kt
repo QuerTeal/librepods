@@ -69,6 +69,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
@@ -85,15 +86,21 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import me.kavishdevar.librepods.R
+import me.kavishdevar.librepods.presentation.theme.AppleShape
+import me.kavishdevar.librepods.presentation.components.screenBottomPadding
+import me.kavishdevar.librepods.presentation.components.screenTopPadding
 import me.kavishdevar.librepods.presentation.components.StyledButton
+import me.kavishdevar.librepods.presentation.components.StyledSectionHeader
 import me.kavishdevar.librepods.presentation.components.StyledToggle
 import me.kavishdevar.librepods.presentation.theme.DesignSystem
 import me.kavishdevar.librepods.presentation.theme.LocalDesignSystem
+import me.kavishdevar.librepods.presentation.theme.LocalOneUI
 import me.kavishdevar.librepods.presentation.viewmodel.AirPodsViewModel
 import me.kavishdevar.librepods.services.ServiceManager
 import me.kavishdevar.librepods.utils.HeadTracking
 import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlin.math.abs
+import me.kavishdevar.librepods.presentation.theme.sfProFamily
 
 @ExperimentalHazeMaterialsApi
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalAnimationApi::class)
@@ -113,8 +120,9 @@ fun HeadTrackingScreen(viewModel: AirPodsViewModel, navigateToPurchase: () -> Un
     val backdrop = rememberLayerBackdrop()
 
     val m3eEnabled = LocalDesignSystem.current == DesignSystem.Material
-    val topPadding = if (m3eEnabled) 0.dp else WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 84.dp
-    val bottomPadding = if (m3eEnabled) 0.dp else WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 12.dp
+    val oneUI = LocalOneUI.current
+    val topPadding = screenTopPadding(material = 0.dp)
+    val bottomPadding = screenBottomPadding(material = 0.dp)
 
     var gestureText by remember { mutableStateOf("") }
     val coroutineScope = rememberCoroutineScope()
@@ -159,7 +167,7 @@ fun HeadTrackingScreen(viewModel: AirPodsViewModel, navigateToPurchase: () -> Un
             }
 
             StyledToggle(
-                label = "Head Gestures",
+                label = stringResource(R.string.head_gestures),
                 checked = state.headGesturesEnabled,
                 onCheckedChange = { viewModel.setHeadGesturesEnabled(it) },
                 enabled = state.isPremium || state.headGesturesEnabled,
@@ -167,19 +175,8 @@ fun HeadTrackingScreen(viewModel: AirPodsViewModel, navigateToPurchase: () -> Un
                 header = true
             )
 
-            Spacer(modifier = Modifier.height(16.dp))
-
-            Spacer(modifier = Modifier.height(16.dp))
-            Text(
-                "Velocity",
-                style = TextStyle(
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = textColor.copy(alpha = 0.6f),
-                    fontFamily = FontFamily(Font(R.font.sf_pro))
-                ),
-                modifier = Modifier.padding(start = 16.dp, bottom = 8.dp, top = 8.dp)
-            )
+            Spacer(modifier = Modifier.height(24.dp))
+            StyledSectionHeader(stringResource(R.string.velocity))
             Plot()
 
             Spacer(modifier = Modifier.height(16.dp))
@@ -210,13 +207,10 @@ fun HeadTrackingScreen(viewModel: AirPodsViewModel, navigateToPurchase: () -> Un
             maxScale = 0.05f
         ) {
             Text(
-                "Test Head Gestures",
-                style = TextStyle(
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.Medium,
-                    fontFamily = FontFamily(Font(R.font.sf_pro)),
-                    color = MaterialTheme.colorScheme.onSecondaryContainer
-                ),
+                stringResource(R.string.test_head_gestures),
+                // One UI's button sets its own label color and weight.
+                color = if (oneUI) Color.Unspecified else MaterialTheme.colorScheme.onSecondaryContainer,
+                fontWeight = if (oneUI) null else FontWeight.Medium
             )
         }
         Box(
@@ -246,7 +240,7 @@ fun HeadTrackingScreen(viewModel: AirPodsViewModel, navigateToPurchase: () -> Un
                         style = TextStyle(
                             fontSize = 20.sp,
                             fontWeight = FontWeight.Medium,
-                            fontFamily = FontFamily(Font(R.font.sf_pro)),
+                            fontFamily = sfProFamily,
                             textAlign = TextAlign.Center
                         ),
                         color = MaterialTheme.colorScheme.onBackground
@@ -257,7 +251,7 @@ fun HeadTrackingScreen(viewModel: AirPodsViewModel, navigateToPurchase: () -> Un
                         style = TextStyle(
                             fontSize = 20.sp,
                             fontWeight = FontWeight.Medium,
-                            fontFamily = FontFamily(Font(R.font.sf_pro)),
+                            fontFamily = sfProFamily,
                             color = textColor,
                             textAlign = TextAlign.Center
                         ),
@@ -273,6 +267,8 @@ fun HeadTrackingScreen(viewModel: AirPodsViewModel, navigateToPurchase: () -> Un
 
 @Composable
 private fun Plot() {
+    val horizontalLabel = stringResource(R.string.horizontal)
+    val verticalLabel = stringResource(R.string.vertical)
     val acceleration by HeadTracking.acceleration.collectAsState()
     val maxPoints = 100
     val points = remember { mutableStateListOf<Pair<Float, Float>>() }
@@ -290,15 +286,26 @@ private fun Plot() {
         maxAbs = maxOf(currentMax * 1.2f, 1000f)
     }
 
+    val cardShape = when {
+        LocalOneUI.current -> RoundedCornerShape(26.dp)
+        LocalDesignSystem.current == DesignSystem.Material -> RoundedCornerShape(24.dp)
+        else -> AppleShape(28.dp)
+    }
+    val labelColor = MaterialTheme.colorScheme.onSurfaceVariant.toArgb()
     Card(
         modifier = Modifier
             .fillMaxWidth()
             .height(300.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        shape = RoundedCornerShape(28.dp)
+        shape = cardShape
     ) {
         val horizontalColor = MaterialTheme.colorScheme.primary
-        val verticalColor = MaterialTheme.colorScheme.onPrimary
+        // A second hue that reads on the card in every look (onPrimary was white on white).
+        val verticalColor = when {
+            LocalDesignSystem.current == DesignSystem.Material && !LocalOneUI.current -> MaterialTheme.colorScheme.tertiary
+            darkTheme -> Color(0xFFFF9F0A)
+            else -> Color(0xFFFF9500)
+        }
 
         Box(
             modifier = Modifier
@@ -367,7 +374,7 @@ private fun Plot() {
 
                 drawContext.canvas.nativeCanvas.apply {
                     val paint = Paint().apply {
-                        color = if (darkTheme) android.graphics.Color.WHITE else android.graphics.Color.BLACK
+                        color = labelColor
                         textSize = 12.sp.toPx()
                         textAlign = Paint.Align.RIGHT
                     }
@@ -383,21 +390,21 @@ private fun Plot() {
                 drawCircle(horizontalColor, 5.dp.toPx(), Offset(width - 150.dp.toPx(), legendY))
                 drawContext.canvas.nativeCanvas.apply {
                     val paint = Paint().apply {
-                        color = if (darkTheme) android.graphics.Color.WHITE else android.graphics.Color.BLACK
+                        color = labelColor
                         textSize = 12.sp.toPx()
                         textAlign = Paint.Align.LEFT
                     }
-                    drawText("Horizontal", width - 140.dp.toPx(), textOffsetY, paint)
+                    drawText(horizontalLabel, width - 140.dp.toPx(), textOffsetY, paint)
                 }
 
                 drawCircle(verticalColor, 5.dp.toPx(), Offset(width - 70.dp.toPx(), legendY))
                 drawContext.canvas.nativeCanvas.apply {
                     val paint = Paint().apply {
-                        color = if (darkTheme) android.graphics.Color.WHITE else android.graphics.Color.BLACK
+                        color = labelColor
                         textSize = 12.sp.toPx()
                         textAlign = Paint.Align.LEFT
                     }
-                    drawText("Vertical", width - 60.dp.toPx(), textOffsetY, paint)
+                    drawText(verticalLabel, width - 60.dp.toPx(), textOffsetY, paint)
                 }
             }
         }

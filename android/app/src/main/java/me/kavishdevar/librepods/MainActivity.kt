@@ -58,6 +58,7 @@ import me.kavishdevar.librepods.presentation.viewmodel.AirPodsViewModel
 import me.kavishdevar.librepods.services.AirPodsService
 import me.kavishdevar.librepods.utils.XposedState
 import kotlin.io.encoding.ExperimentalEncodingApi
+import me.kavishdevar.librepods.presentation.theme.AppDesign
 
 lateinit var serviceConnection: ServiceConnection
 lateinit var connectionStatusReceiver: BroadcastReceiver
@@ -66,6 +67,11 @@ lateinit var testReviewReceiver: BroadcastReceiver
 //@AndroidEntryPoint
 @ExperimentalMaterial3Api
 class MainActivity : ComponentActivity() {
+    override fun onResume() {
+        super.onResume()
+        me.kavishdevar.librepods.data.LastConnectionLocationStore.refreshPhoneFix(this)
+        me.kavishdevar.librepods.services.ServiceManager.getService()?.refreshCallStateMonitoring()
+    }
     companion object {
         init {
             if (XposedState.isAvailable && XposedState.bluetoothScopeEnabled) {
@@ -81,11 +87,11 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             val sharedPreferences = LocalContext.current.getSharedPreferences("settings", MODE_PRIVATE)
-            val m3eEnabled = remember { mutableStateOf(sharedPreferences.getBoolean("m3e_enabled", true)) }
+            val appDesign = remember { mutableStateOf(AppDesign.fromPreferences(sharedPreferences)) }
 
             val sharedPreferenceChangeListener = SharedPreferences.OnSharedPreferenceChangeListener { sharedPreferences, key ->
                 when (key) {
-                    "m3e_enabled" -> m3eEnabled.value = sharedPreferences.getBoolean(key, true)
+                    AppDesign.PREF_KEY -> appDesign.value = AppDesign.fromPreferences(sharedPreferences)
                 }
             }
 
@@ -96,7 +102,7 @@ class MainActivity : ComponentActivity() {
                 }
             }
             LibrePodsTheme(
-                m3eEnabled = m3eEnabled.value
+                design = appDesign.value
             ) {
 //                For demo screenshots
 //                val windowInsetsController = WindowCompat.getInsetsController(window, window.decorView)
@@ -121,7 +127,7 @@ class MainActivity : ComponentActivity() {
         } catch (e: Exception) {
             Log.e("MainActivity", "Error while unregistering receiver: $e")
         }
-        sendBroadcast(Intent(AirPodsNotifications.DISCONNECT_RECEIVERS))
+        sendBroadcast(Intent(AirPodsNotifications.DISCONNECT_RECEIVERS).setPackage(packageName))
         super.onDestroy()
     }
 

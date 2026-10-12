@@ -64,6 +64,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Job
 import me.kavishdevar.librepods.R
+import me.kavishdevar.librepods.presentation.components.screenBottomPadding
+import me.kavishdevar.librepods.presentation.components.screenTopPadding
 import me.kavishdevar.librepods.bluetooth.ATTHandles
 import me.kavishdevar.librepods.data.HearingAidSettings
 import me.kavishdevar.librepods.data.parseHearingAidSettingsResponse
@@ -74,6 +76,7 @@ import me.kavishdevar.librepods.presentation.theme.LocalDesignSystem
 import me.kavishdevar.librepods.presentation.viewmodel.AirPodsUiState
 import me.kavishdevar.librepods.presentation.viewmodel.AirPodsViewModel
 import me.kavishdevar.librepods.presentation.viewmodel.demoState
+import me.kavishdevar.librepods.presentation.theme.sfProFamily
 
 private const val TAG = "UpdateHearingTestScreen"
 
@@ -81,8 +84,8 @@ private const val TAG = "UpdateHearingTestScreen"
 fun UpdateHearingTestRoute(viewModel: AirPodsViewModel) {
     val state by viewModel.uiState.collectAsState()
     val m3eEnabled = LocalDesignSystem.current == DesignSystem.Material
-    val topPadding = if (m3eEnabled) 0.dp else WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 84.dp
-    val bottomPadding = if (m3eEnabled) 0.dp else WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 12.dp
+    val topPadding = screenTopPadding(material = 0.dp)
+    val bottomPadding = screenBottomPadding(material = 0.dp)
 
     Box(
         modifier = Modifier
@@ -143,9 +146,8 @@ fun UpdateHearingTestScreen(
         ) {
             mutableStateOf(FloatArray(8))
         }
-
-        val debounceJob = remember { mutableStateOf<Job?>(null) }
         val initialized = rememberSaveable { mutableStateOf(false) }
+    val userEdited = remember { mutableStateOf(false) }
 
         val hearingAidSettings = remember {
             mutableStateOf(
@@ -195,7 +197,8 @@ fun UpdateHearingTestScreen(
             ambientNoiseReduction.floatValue,
             ownVoiceAmplification.floatValue
         ) {
-            if (!initialized.value) return@LaunchedEffect
+            if (!initialized.value || !userEdited.value) return@LaunchedEffect
+            userEdited.value = false
             hearingAidSettings.value = HearingAidSettings(
                 leftEQ = leftEQ.value,
                 rightEQ = rightEQ.value,
@@ -212,7 +215,7 @@ fun UpdateHearingTestScreen(
                 ownVoiceAmplification = ownVoiceAmplification.floatValue
             )
             Log.d(TAG, "Updated settings: ${hearingAidSettings.value}")
-            sendHearingAidSettings(state.hearingAidData, hearingAidSettings.value, debounceJob, setATTCharacteristicValue)
+            sendHearingAidSettings(state.hearingAidData, hearingAidSettings.value, setATTCharacteristicValue)
         }
 
         val frequencies =
@@ -252,7 +255,7 @@ fun UpdateHearingTestScreen(
                 )
                 OutlinedTextField(
                     value = leftEQ.value[index].toString(),
-                    onValueChange = { newValue ->
+                    onValueChange = { newValue -> userEdited.value = true;
                         val parsed = newValue.toFloatOrNull()
                         if (parsed != null) {
                             val newArray = leftEQ.value.copyOf()
@@ -261,17 +264,17 @@ fun UpdateHearingTestScreen(
                             Log.d(TAG, "Left EQ updated at index $index to $parsed")
                         }
                     },
-//                        label = { Text("Value", fontSize = 14.sp, fontFamily = FontFamily(Font(R.font.sf_pro))) },
+//                        label = { Text("Value", fontSize = 14.sp, fontFamily = sfProFamily) },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                     textStyle = TextStyle(
-                        fontFamily = FontFamily(Font(R.font.sf_pro)),
+                        fontFamily = sfProFamily,
                         fontSize = 14.sp
                     ),
                     modifier = Modifier.weight(1f)
                 )
                 OutlinedTextField(
                     value = rightEQ.value[index].toString(),
-                    onValueChange = { newValue ->
+                    onValueChange = { newValue -> userEdited.value = true;
                         val parsed = newValue.toFloatOrNull()
                         if (parsed != null) {
                             val newArray = rightEQ.value.copyOf()
@@ -280,10 +283,10 @@ fun UpdateHearingTestScreen(
                             Log.d(TAG, "Right EQ updated at index $index to $parsed")
                         }
                     },
-//                        label = { Text("Value", fontSize = 14.sp, fontFamily = FontFamily(Font(R.font.sf_pro))) },
+//                        label = { Text("Value", fontSize = 14.sp, fontFamily = sfProFamily) },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                     textStyle = TextStyle(
-                        fontFamily = FontFamily(Font(R.font.sf_pro)),
+                        fontFamily = sfProFamily,
                         fontSize = 14.sp
                     ),
                     modifier = Modifier.weight(1f)

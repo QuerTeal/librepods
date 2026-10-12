@@ -49,6 +49,8 @@ import androidx.compose.ui.unit.dp
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import dev.chrisbanes.haze.materials.ExperimentalHazeMaterialsApi
 import me.kavishdevar.librepods.R
+import me.kavishdevar.librepods.presentation.components.screenBottomPadding
+import me.kavishdevar.librepods.presentation.components.screenTopPadding
 import me.kavishdevar.librepods.bluetooth.AACPManager
 import me.kavishdevar.librepods.data.StemAction
 import me.kavishdevar.librepods.presentation.components.ListItemOrientation
@@ -78,8 +80,8 @@ fun LongPress(viewModel: AirPodsViewModel, name: String, navigateToPurchase: () 
     val longPressAction = if (name.lowercase() == "left") state.leftAction else state.rightAction
 
     val m3eEnabled = LocalDesignSystem.current == DesignSystem.Material
-    val topPadding = if (m3eEnabled) 0.dp else WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 84.dp
-    val bottomPadding = if (m3eEnabled) 0.dp else WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 12.dp
+    val topPadding = screenTopPadding(material = 0.dp)
+    val bottomPadding = screenBottomPadding(material = 0.dp)
 
     val scrollState = rememberScrollState()
 
@@ -149,7 +151,7 @@ fun LongPress(viewModel: AirPodsViewModel, name: String, navigateToPurchase: () 
                     StyledListItem(
                         name = stringResource(R.string.off),
                         description = stringResource(R.string.listening_mode_off_description),
-                        selected = (currentByte and 0x01) != 0,
+                        checked = (currentByte and 0x01) != 0,
                         onClick = {
                             viewModel.toggleListeningMode(0x01)
                         },
@@ -170,7 +172,7 @@ fun LongPress(viewModel: AirPodsViewModel, name: String, navigateToPurchase: () 
                 StyledListItem(
                     name = stringResource(R.string.transparency),
                     description = stringResource(R.string.listening_mode_transparency_description),
-                    selected = (currentByte and 0x04) != 0,
+                    checked = (currentByte and 0x04) != 0,
                     onClick = {
                         viewModel.toggleListeningMode(0x04)
                     },
@@ -190,7 +192,7 @@ fun LongPress(viewModel: AirPodsViewModel, name: String, navigateToPurchase: () 
                 StyledListItem(
                     name = stringResource(R.string.adaptive),
                     description = stringResource(R.string.listening_mode_adaptive_description),
-                    selected = (currentByte and 0x08) != 0,
+                    checked = (currentByte and 0x08) != 0,
                     onClick = {
                         viewModel.toggleListeningMode(0x08)
                     },
@@ -210,7 +212,7 @@ fun LongPress(viewModel: AirPodsViewModel, name: String, navigateToPurchase: () 
                 StyledListItem(
                     name = stringResource(R.string.noise_cancellation),
                     description = stringResource(R.string.listening_mode_noise_cancellation_description),
-                    selected = (currentByte and 0x02) != 0,
+                    checked = (currentByte and 0x02) != 0,
                     onClick = {
                         viewModel.toggleListeningMode(0x02)
                     },

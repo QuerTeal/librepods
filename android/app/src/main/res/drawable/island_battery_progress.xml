@@ -6,6 +6,6 @@
         android:shape="ring"
         android:innerRadiusRatio="3.0"
         android:thickness="4dp" >
-        <solid android:color="#1ceb72" />
+        <solid android:color="@color/battery_level" />
     </shape>
 </rotate>

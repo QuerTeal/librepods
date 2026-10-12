@@ -10,6 +10,8 @@ import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.runtime.Composable
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.ui.Modifier
 import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation3.runtime.NavEntry
@@ -24,6 +26,7 @@ import me.kavishdevar.librepods.presentation.screens.AppSettingsScreen
 import me.kavishdevar.librepods.presentation.screens.CallControlScreen
 import me.kavishdevar.librepods.presentation.screens.EqualizerRoute
 import me.kavishdevar.librepods.presentation.screens.HeadTrackingScreen
+import me.kavishdevar.librepods.presentation.screens.LanguageScreen
 import me.kavishdevar.librepods.presentation.screens.HearingAidAdjustmentsScreen
 import me.kavishdevar.librepods.presentation.screens.HearingAidScreen
 import me.kavishdevar.librepods.presentation.screens.HearingProtectionScreen
@@ -36,6 +39,9 @@ import me.kavishdevar.librepods.presentation.screens.ReleaseNotesScreen
 import me.kavishdevar.librepods.presentation.screens.RenameScreen
 import me.kavishdevar.librepods.presentation.screens.TransparencySettingsScreen
 import me.kavishdevar.librepods.presentation.screens.TroubleshootingScreen
+import me.kavishdevar.librepods.presentation.screens.FeatureStatusScreen
+import me.kavishdevar.librepods.presentation.screens.FeatureGate
+import me.kavishdevar.librepods.data.AirPodsFeature
 import me.kavishdevar.librepods.presentation.screens.UpdateHearingTestRoute
 import me.kavishdevar.librepods.presentation.screens.VersionScreen
 import me.kavishdevar.librepods.presentation.screens.onboarding.OnboardingScreen
@@ -64,9 +70,11 @@ fun AppNavGraph(
     }
 
     val m3eEnabled = LocalDesignSystem.current == DesignSystem.Material
+    val apple = LocalDesignSystem.current == DesignSystem.Apple
 
     SharedTransitionLayout {
         NavDisplay(
+            modifier = Modifier.fillMaxSize(),
             sharedTransitionScope = this,
             backStack = backStack,
             onBack = {
@@ -109,6 +117,7 @@ fun AppNavGraph(
                                 navigateToAccessibility = { navigate(Screen.Accessibility) },
                                 navigateToVersion = { navigate(Screen.VersionInfo) },
                                 navigateToTroubleshooting = { navigate(Screen.Troubleshooting) },
+                                navigateToFeatureStatus = { navigate(Screen.FeatureStatus) },
                                 navigateToCallControlScreen = { navigate(Screen.CallControl(it)) },
                                 navigateToMicrophoneSettings = { navigate(Screen.MicrophoneSettings) },
                             )
@@ -128,14 +137,24 @@ fun AppNavGraph(
                                 navigateToPurchase = ::navigateToPurchase,
                                 navigateToTroubleshooting = { navigate(Screen.Troubleshooting) },
                                 navigateToOpenSourceLicenses = { navigate(Screen.OpenSourceLicenses) },
-                                navigateToReleaseNotesScreen = { navigate(Screen.ReleaseNotes) }
+                                navigateToReleaseNotesScreen = { navigate(Screen.ReleaseNotes) },
+                                navigateToLanguage = { navigate(Screen.Language) },
+                                navigateToFeatureStatus = { navigate(Screen.FeatureStatus) }
                             )
+                        }
+
+                    Screen.Language ->
+                        NavEntry(screen) {
+                            LanguageScreen()
                         }
 
                     Screen.Troubleshooting ->
                         NavEntry(screen) {
                             TroubleshootingScreen()
                         }
+
+                    Screen.FeatureStatus ->
+                        NavEntry(screen) { FeatureStatusScreen(airPodsViewModel) }
 
                     Screen.HeadTracking ->
                         NavEntry(screen) {
@@ -156,29 +175,35 @@ fun AppNavGraph(
                     Screen.TransparencyCustomization ->
                         NavEntry(screen) {
                             if (!airPodsViewModel.isReady) LoadingScreen()
-                            TransparencySettingsScreen(airPodsViewModel)
+                            FeatureGate(airPodsViewModel, AirPodsFeature.TRANSPARENCY) {
+                                TransparencySettingsScreen(airPodsViewModel)
+                            }
                         }
 
                     Screen.HearingAid ->
                         NavEntry(screen) {
                             if (!airPodsViewModel.isReady) LoadingScreen()
-                            HearingAidScreen(
+                            FeatureGate(airPodsViewModel, AirPodsFeature.HEARING_AID) { HearingAidScreen(
                                 viewModel = airPodsViewModel,
                                 onNavigateHearingAidAdjustments = { navigate(Screen.HearingAidAdjustments) },
                                 onNavigateHearingTest = { navigate(Screen.UpdateHearingTest) },
-                            )
+                            ) }
                         }
 
                     Screen.HearingAidAdjustments ->
                         NavEntry(screen) {
                             if (!airPodsViewModel.isReady) LoadingScreen()
-                            HearingAidAdjustmentsScreen(airPodsViewModel)
+                            FeatureGate(airPodsViewModel, AirPodsFeature.HEARING_AID) {
+                                HearingAidAdjustmentsScreen(airPodsViewModel)
+                            }
                         }
 
                     Screen.AdaptiveStrength ->
                         NavEntry(screen) {
                             if (!airPodsViewModel.isReady) LoadingScreen()
-                            AdaptiveStrengthScreen(airPodsViewModel, ::navigateToPurchase)
+                            FeatureGate(airPodsViewModel, AirPodsFeature.ADAPTIVE_AUDIO) {
+                                AdaptiveStrengthScreen(airPodsViewModel, ::navigateToPurchase)
+                            }
                         }
 
 //                Screen.CameraControl ->
@@ -193,7 +218,9 @@ fun AppNavGraph(
 
                     Screen.UpdateHearingTest ->
                         NavEntry(screen) {
-                            UpdateHearingTestRoute(airPodsViewModel)
+                            FeatureGate(airPodsViewModel, AirPodsFeature.HEARING_AID) {
+                                UpdateHearingTestRoute(airPodsViewModel)
+                            }
                         }
 
                     Screen.VersionInfo ->
@@ -220,7 +247,9 @@ fun AppNavGraph(
                     Screen.Equalizer ->
                         NavEntry(screen) {
                             if (!airPodsViewModel.isReady) LoadingScreen()
-                            EqualizerRoute(airPodsViewModel)
+                            FeatureGate(airPodsViewModel, AirPodsFeature.CUSTOM_EQ) {
+                                EqualizerRoute(airPodsViewModel)
+                            }
                         }
 
                     is Screen.LongPress ->
@@ -275,10 +304,10 @@ fun AppNavGraph(
                 }
             },
             transitionSpec = {
-                slideInHorizontally { it } togetherWith slideOutHorizontally { -it / 4 }
+                appPushTransition(apple)
             },
             popTransitionSpec = {
-                slideInHorizontally { -it / 4 } togetherWith slideOutHorizontally { it }
+                appPopTransition(apple)
             },
             predictivePopTransitionSpec = { swipeEdge ->
                 if (m3eEnabled) {
@@ -316,7 +345,7 @@ fun AppNavGraph(
                             animationSpec = tween(250)
                         )
                 } else {
-                    slideInHorizontally { -it / 4 } togetherWith slideOutHorizontally { it }
+                    appPopTransition(apple)
                 }
             },
         )

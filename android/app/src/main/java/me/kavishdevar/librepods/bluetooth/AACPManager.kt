@@ -21,6 +21,7 @@
 package me.kavishdevar.librepods.bluetooth
 
 import android.util.Log
+import android.os.SystemClock
 import me.kavishdevar.librepods.data.Capability
 import me.kavishdevar.librepods.data.CustomEq
 import java.nio.ByteBuffer
@@ -33,6 +34,7 @@ import kotlin.io.encoding.ExperimentalEncodingApi
  * constructing and parsing packets for communication with AirPods.
  */
 class AACPManager {
+    val commandTracker = CommandTracker(SystemClock::elapsedRealtime)
     private val TAG = "AACPManager[${System.identityHashCode(this)}]"
     companion object {
         @Suppress("unused")
@@ -112,7 +114,7 @@ class AACPManager {
                 0x37
             ),
             PPE_CAP_LEVEL_CONFIG(0x38),
-            DYNAMIC_END_OF_CHARGE(0x3B);
+            DYNAMIC_END_OF_CHARGE(0x3B), IN_CASE_TONE_VOLUME(0x40);
 
             companion object {
                 fun fromByte(byte: Byte): ControlCommandIdentifiers? =
@@ -215,13 +217,9 @@ class AACPManager {
         identifier: ControlCommandIdentifiers, value: ByteArray
     ) {
         val existingStatus = getControlCommandStatus(identifier)
-        if (existingStatus?.value.contentEquals(value)) {
-            controlCommandStatusList.remove(existingStatus)
-        }
-        controlCommandListeners[identifier]?.forEach { listener ->
-            listener.onControlCommandReceived(ControlCommand(identifier.value, value))
-        }
-        controlCommandStatusList.add(ControlCommandStatus(identifier, value))
+        if (existingStatus != null) controlCommandStatusList.remove(existingStatus)
+        controlCommandStatusList.add(ControlCommandStatus(identifier, value.copyOf()))
+        commandTracker.receive(identifier.value, value)
 
         if (identifier == ControlCommandIdentifiers.OWNS_CONNECTION) {
             owns = value.isNotEmpty() && value[0] == 0x01.toByte()
@@ -306,85 +304,32 @@ class AACPManager {
         return sendPacket(createDataPacket(data))
     }
 
+    @Synchronized
     fun sendControlCommand(identifier: Byte, value: ByteArray): Boolean {
+        if (ControlCommandIdentifiers.fromByte(identifier) == null || value.isEmpty() || value.size > 4) return false
+        val token = commandTracker.begin(identifier, value)
         val controlPacket = createControlCommandPacket(identifier, value)
-        setControlCommandStatusValue(
-            ControlCommandIdentifiers.fromByte(identifier) ?: return false, value
-        )
-        return sendDataPacket(controlPacket)
+        val sent = sendDataPacket(controlPacket)
+        if (!sent) commandTracker.sendFailed(identifier, token)
+        return sent
     }
 
     @OptIn(ExperimentalStdlibApi::class)
     fun sendControlCommand(identifier: Byte, value: Byte): Boolean {
-        val controlPacket = createControlCommandPacket(identifier, byteArrayOf(value))
-        setControlCommandStatusValue(
-            ControlCommandIdentifiers.fromByte(identifier) ?: return false, byteArrayOf(value)
-        )
-        return sendDataPacket(controlPacket)
+        return sendControlCommand(identifier, byteArrayOf(value))
     }
 
     fun sendControlCommand(identifier: Byte, value: Boolean): Boolean {
-        val controlPacket = createControlCommandPacket(
-            identifier, if (value) byteArrayOf(0x01) else byteArrayOf(0x02)
-        )
-        setControlCommandStatusValue(
-            ControlCommandIdentifiers.fromByte(identifier) ?: return false,
-            if (value) byteArrayOf(0x01) else byteArrayOf(0x02)
-        )
-        return sendDataPacket(controlPacket)
+        return sendControlCommand(identifier, if (value) byteArrayOf(0x01) else byteArrayOf(0x02))
     }
 
     fun sendControlCommand(identifier: Byte, value: Int): Boolean {
-        val controlPacket = createControlCommandPacket(identifier, byteArrayOf(value.toByte()))
-        setControlCommandStatusValue(
-            ControlCommandIdentifiers.fromByte(identifier) ?: return false,
-            byteArrayOf(value.toByte())
-        )
-        return sendDataPacket(controlPacket)
+        return sendControlCommand(identifier, byteArrayOf(value.toByte()))
     }
 
-    fun parseProximityKeysResponse(data: ByteArray): Map<ProximityKeyType, ByteArray> {
-        Log.d(
-            TAG, "Parsing Proximity Keys Response: ${data.joinToString(" ") { "%02X".format(it) }}"
-        )
-        if (data.size < 4) {
-            throw IllegalArgumentException("Data array too short to parse Proximity Keys Response")
-        }
-        if (data[4] != Opcodes.PROXIMITY_KEYS_RSP) {
-            throw IllegalArgumentException("Data array does not start with PROXIMITY_KEYS_RSP opcode")
-        }
-        val keyCount = data[6].toInt()
-        val keys = mutableMapOf<ProximityKeyType, ByteArray>()
-        var offset = 7
-        for (i in 0 until keyCount) {
-            Log.d(TAG, "Parsing Proximity Key $i")
-            if (offset + 3 >= data.size) {
-                throw IllegalArgumentException("Data array too short to parse Proximity Keys Response")
-            }
-            val keyType = data[offset]
-            val keyLength = data[offset + 2].toInt()
-            Log.d(TAG, "Key Type: ${keyType.toString(16)}, Key Length: $keyLength")
-            offset += 4
-            if (offset + keyLength > data.size) {
-                throw IllegalArgumentException("Data array too short to parse Proximity Keys Response")
-            }
-            val key = ByteArray(keyLength)
-            System.arraycopy(data, offset, key, 0, keyLength)
-            try {
-                keys[ProximityKeyType.fromByte(keyType)] = key
-            } catch (e: Exception) {
-                Log.e(
-                    TAG, "incorrect key type received: $keyType, ${key.toHexString()}"
-                )
-            }
-            offset += keyLength
-            Log.d(
-                TAG, "Parsed Proximity Key: Type: ${keyType}, Length: $keyLength, Key: ${
-                key.joinToString(" ") { "%02X".format(it) }
-            }")
-        }
-        return keys
-    }
+    fun parseProximityKeysResponse(data: ByteArray): Map<ProximityKeyType, ByteArray> =
+        ProximityKeyParser.parse(data).mapKeys { ProximityKeyType.fromByte(it.key) }
+
 
     fun sendRequestProximityKeys(type: Byte): Boolean {
         Log.d(TAG, "Requesting proximity keys of type: ${type.toString(16)}")
@@ -602,8 +547,9 @@ class AACPManager {
             }
 
             Opcodes.CUSTOM_EQ -> {
-                Log.d(TAG, "Parsing CUSTOM_EQ: ${packet.toHexString()}")
-                customEq = parseCustomEqPacket(packet)
+                customEq = CustomEq.fromPacket(packet) ?: return
+                commandTracker.receive(Opcodes.CUSTOM_EQ, byteArrayOf(customEq.state.toByte(),
+                    customEq.low.toByte(), customEq.mid.toByte(), customEq.high.toByte()))
                 customEqCallback?.invoke(customEq)
                 callback?.onCustomEqReceived(customEq)
             }
@@ -807,12 +753,12 @@ class AACPManager {
             // throw IllegalArgumentException("MAC address must be 6 bytes")
             Log.w(
                 TAG,
-                "Invalid MAC address format, got: selfMacAddress=$selfMacAddress, targetMacAddress=$targetMacAddress"
+                "Invalid routing address format, targetMacAddress=$targetMacAddress"
             )
             return false
         }
-        Log.d(TAG, "SELFMAC: ${selfMacAddress}, TARGETMAC: $targetMacAddress")
-        Log.d(TAG, "Sending Media Information packet to $targetMacAddress")
+        Log.d(TAG, "Routing metadata present")
+        Log.d(TAG, "Sending Media Information packet")
         return sendDataPacket(
             createMediaInformationNewDevicePacket(
                 selfMacAddress,
@@ -858,13 +804,13 @@ class AACPManager {
     fun sendHijackRequest(selfMacAddress: String): Boolean {
         if (selfMacAddress.length != 17 || !selfMacAddress.matches(Regex("([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}"))) {
             // throw IllegalArgumentException("MAC address must be 6 bytes")
-            Log.w(TAG, "Invalid MAC address format, got: selfMacAddress=$selfMacAddress")
+            Log.w(TAG, "Invalid routing address format")
             return false
         }
         var success = false
         for (connectedDevice in connectedDevices) {
             if (connectedDevice.mac != selfMacAddress) {
-                Log.d(TAG, "Sending Hijack Request packet to ${connectedDevice.mac}")
+                Log.d(TAG, "Sending Hijack Request packet")
                 success = sendDataPacket(createHijackRequestPacket(connectedDevice.mac)) || success
             }
         }
@@ -901,16 +847,16 @@ class AACPManager {
     fun sendMediaInformataion(selfMacAddress: String, streamingState: Boolean = false): Boolean {
         if (selfMacAddress.length != 17 || !selfMacAddress.matches(Regex("([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}"))) {
             // throw IllegalArgumentException("MAC address must be 6 bytes")
-            Log.d(TAG, "Invalid MAC address format, got: selfMacAddress=$selfMacAddress")
+            Log.d(TAG, "Invalid routing address format")
             return false
         }
-        Log.d(TAG, "SELFMAC: $selfMacAddress")
+        Log.d(TAG, "Routing metadata present")
         val targetMac = connectedDevices.find { it.mac != selfMacAddress }?.mac
         if (targetMac == null) {
             Log.w(TAG, "Cannot send Media Information packet: No connected device found")
             return false
         }
-        Log.d(TAG, "Sending Media Information packet to $targetMac")
+        Log.d(TAG, "Sending Media Information packet")
         return sendDataPacket(
             createMediaInformationPacket(
                 selfMacAddress, targetMac, streamingState
@@ -958,7 +904,7 @@ class AACPManager {
     fun sendSmartRoutingShowUI(selfMacAddress: String): Boolean {
         if (selfMacAddress.length != 17 || !selfMacAddress.matches(Regex("([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}"))) {
             // throw IllegalArgumentException("MAC address must be 6 bytes")
-            Log.w(TAG, "Invalid MAC address format, got: selfMacAddress=$selfMacAddress")
+            Log.w(TAG, "Invalid routing address format")
             return false
         }
 
@@ -967,7 +913,7 @@ class AACPManager {
             Log.w(TAG, "Cannot send Smart Routing Show UI packet: No connected device found")
             return false
         }
-        Log.d(TAG, "Sending Smart Routing Show UI packet to $targetMac")
+        Log.d(TAG, "Sending Smart Routing Show UI packet")
         return sendDataPacket(createSmartRoutingShowUIPacket(targetMac))
     }
 
@@ -1003,7 +949,7 @@ class AACPManager {
         var success = false
         for (connectedDevice in connectedDevices) {
             if (connectedDevice.mac != selfMacAddress) {
-                Log.d(TAG, "Sending Hijack Reversed packet to ${connectedDevice.mac}")
+                Log.d(TAG, "Sending Hijack Reversed packet")
                 success = sendDataPacket(createHijackReversedPacket(connectedDevice.mac)) || success
             }
         }
@@ -1041,11 +987,11 @@ class AACPManager {
             // throw IllegalArgumentException("MAC address must be 6 bytes")
             Log.w(
                 TAG,
-                "Invalid MAC address format, got: selfMacAddress=$selfMacAddress, targetMacAddress=$targetMacAddress"
+                "Invalid routing address format, targetMacAddress=$targetMacAddress"
             )
             return false
         }
-        Log.d(TAG, "Sending Add TiPi Device packet to $targetMacAddress")
+        Log.d(TAG, "Sending Add TiPi Device packet")
         return sendDataPacket(createAddTiPiDevicePacket(selfMacAddress, targetMacAddress))
     }
 
@@ -1139,7 +1085,7 @@ class AACPManager {
     @OptIn(ExperimentalStdlibApi::class)
     fun sendPacket(packet: ByteArray): Boolean {
         try {
-            Log.d(TAG, "Sending packet: ${packet.joinToString(" ") { "%02X".format(it) }}")
+            Log.d(TAG, "Sending packet opcode=${packet.getOrNull(4)?.toInt()?.and(0xff)}, bytes=${packet.size}")
 
             if (packet[4] == Opcodes.CONTROL_COMMAND) {
                 val controlCommand = try {
@@ -1153,22 +1099,11 @@ class AACPManager {
                     TAG, "Control command: ${controlCommand.identifier.toHexString()} - ${
                     controlCommand.value.joinToString(" ") { "%02X".format(it) }
                 }")
-                setControlCommandStatusValue(
-                    ControlCommandIdentifiers.fromByte(controlCommand.identifier) ?: return false,
-                    controlCommand.value
-                )
+                // Outgoing bytes are not a confirmed device setting. Only receivePacket updates it.
+                if (ControlCommandIdentifiers.fromByte(controlCommand.identifier) == null) return false
             }
 
-            val socket = BluetoothConnectionManager.aacpSocket ?: return false
-
-            if (socket.isConnected) {
-                socket.outputStream?.write(packet)
-                socket.outputStream?.flush()
-                return true
-            } else {
-                Log.d(TAG, "Can't send packet: Socket not initialized or connected")
-                return false
-            }
+            return BluetoothConnectionManager.writePacket(packet)
         } catch (e: Exception) {
             Log.e(TAG, "Error sending packet: ${e.message}")
             return false
@@ -1206,7 +1141,7 @@ class AACPManager {
     }
 
     fun parseAudioSourceResponse(data: ByteArray): Pair<String, AudioSourceType> {
-        Log.d(TAG, "Parsing Audio Source Response: ${data.joinToString(" ") { "%02X".format(it) }}")
+        Log.d(TAG, "Parsing audio source response (${data.size} bytes)")
         if (data.size < 9) {
             throw IllegalArgumentException("Data array too short to parse Audio Source Response")
         }
@@ -1270,9 +1205,10 @@ class AACPManager {
     }
 
     fun disconnected() {
+        commandTracker.reset()
         Log.d(TAG, "Disconnected, clearing state")
         controlCommandStatusList.clear()
-        controlCommandListeners.clear()
+        // UI observers belong to this manager, not to the closed socket session.
         owns = false
         oldConnectedDevices = listOf()
         connectedDevices = listOf()
@@ -1314,8 +1250,13 @@ class AACPManager {
         )
     }
 
+    @Synchronized
     fun sendCustomEqPacket(customEq: CustomEq): Boolean {
-        return sendDataPacket(customEq.toPacket())
+        val token = commandTracker.begin(Opcodes.CUSTOM_EQ, byteArrayOf(customEq.state.toByte(),
+            customEq.low.toByte(), customEq.mid.toByte(), customEq.high.toByte()))
+        val sent = sendDataPacket(customEq.toPacket())
+        if (!sent) commandTracker.sendFailed(Opcodes.CUSTOM_EQ, token)
+        return sent
     }
 
     fun parseCustomEqPacket(packet: ByteArray): CustomEq {

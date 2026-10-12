@@ -18,6 +18,9 @@
 
 package me.kavishdevar.librepods.presentation.screens
 
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.navigationBarsPadding
+
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
@@ -81,9 +84,25 @@ import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import me.kavishdevar.librepods.BuildConfig
 import me.kavishdevar.librepods.R
+import me.kavishdevar.librepods.presentation.components.screenBottomPadding
+import me.kavishdevar.librepods.presentation.components.screenTopPadding
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material3.BottomSheetDefaults
+import androidx.compose.material3.FilledIconButton
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.ui.text.style.TextOverflow
+import me.kavishdevar.librepods.presentation.theme.LocalOneUI
+import me.kavishdevar.librepods.presentation.theme.OneUIText
 import me.kavishdevar.librepods.presentation.components.AppInfoCard
 import me.kavishdevar.librepods.presentation.components.DeviceInfoCard
 import me.kavishdevar.librepods.presentation.components.StyledBottomSheet
+import me.kavishdevar.librepods.presentation.components.OneUIBottomSheet
 import me.kavishdevar.librepods.presentation.components.StyledButton
 import me.kavishdevar.librepods.presentation.components.StyledIconButton
 import me.kavishdevar.librepods.presentation.components.StyledInputField
@@ -95,8 +114,82 @@ import me.kavishdevar.librepods.presentation.theme.DesignSystem
 import me.kavishdevar.librepods.presentation.theme.LocalDesignSystem
 import me.kavishdevar.librepods.presentation.theme.MaterialTypography
 import me.kavishdevar.librepods.presentation.viewmodel.AppSettingsViewModel
+import me.kavishdevar.librepods.data.ConversationalAwarenessDefaults
 import me.kavishdevar.librepods.utils.XposedState
 import java.util.concurrent.TimeUnit
+import me.kavishdevar.librepods.presentation.theme.sfProFamily
+import android.content.Context
+import android.provider.Settings
+import me.kavishdevar.librepods.data.Battery
+import me.kavishdevar.librepods.data.BatteryComponent
+import me.kavishdevar.librepods.data.BatteryStatus
+import me.kavishdevar.librepods.presentation.components.ListItemOrientation
+import me.kavishdevar.librepods.presentation.overlays.PopupWindow
+import me.kavishdevar.librepods.presentation.overlays.IslandWindow
+import me.kavishdevar.librepods.services.ServiceManager
+import me.kavishdevar.librepods.presentation.theme.AppDesign
+import android.os.Handler
+import android.os.Looper
+import me.kavishdevar.librepods.QuickSettingsDialogActivity
+import me.kavishdevar.librepods.CompanionRegistrationActivity
+
+/** Shows the bottom connection popup with sample levels so it can be tried without the case. */
+internal fun previewIslandPopup(context: Context): IslandWindow? {
+    if (!Settings.canDrawOverlays(context)) {
+        Toast.makeText(context, R.string.overlay_permission_required, Toast.LENGTH_LONG).show()
+        return null
+    }
+    val island = IslandWindow(context.applicationContext, observeDeviceEvents = false)
+    val name = context.getSharedPreferences("settings", Context.MODE_PRIVATE).getString("name", null) ?: "AirPods Pro 3"
+    return if (island.show(name, 85, context)) island else {
+        Toast.makeText(context, R.string.island_popup_failed, Toast.LENGTH_LONG).show()
+        null
+    }
+}
+
+private fun previewConnectionPopup(context: Context): PopupWindow? {
+    if (!Settings.canDrawOverlays(context)) {
+        Toast.makeText(context, R.string.overlay_permission_required, Toast.LENGTH_SHORT).show()
+        return null
+    }
+    val service = ServiceManager.getService()
+    val name = context.getSharedPreferences("settings", Context.MODE_PRIVATE)
+        .getString("name", null) ?: service?.airpodsInstance?.name ?: "AirPods Pro"
+    // Starts with the buds in the case, takes them out to show the split, then puts them back to charge.
+    val handler = Handler(Looper.getMainLooper())
+    val popup = PopupWindow(context, model = service?.airpodsInstance?.model,
+        observeDeviceEvents = false, onCloseCallback = { handler.removeCallbacksAndMessages(null) })
+    popup.open(
+        name = name,
+        batteries = listOf(
+            Battery(BatteryComponent.LEFT, 85, BatteryStatus.CHARGING),
+            Battery(BatteryComponent.RIGHT, 80, BatteryStatus.CHARGING),
+            Battery(BatteryComponent.CASE, 100, BatteryStatus.NOT_CHARGING)
+        ),
+        earStatus = byteArrayOf(0x02, 0x02)
+    )
+    handler.postDelayed({
+        popup.update(
+            batteries = listOf(
+                Battery(BatteryComponent.LEFT, 85, BatteryStatus.NOT_CHARGING),
+                Battery(BatteryComponent.RIGHT, 80, BatteryStatus.NOT_CHARGING),
+                Battery(BatteryComponent.CASE, 100, BatteryStatus.NOT_CHARGING)
+            ),
+            earStatus = byteArrayOf(0x01, 0x01)
+        )
+    }, 3_500)
+    handler.postDelayed({
+        popup.update(
+            batteries = listOf(
+                Battery(BatteryComponent.LEFT, 85, BatteryStatus.CHARGING),
+                Battery(BatteryComponent.RIGHT, 80, BatteryStatus.CHARGING),
+                Battery(BatteryComponent.CASE, 100, BatteryStatus.NOT_CHARGING)
+            ),
+            earStatus = byteArrayOf(0x02, 0x02)
+        )
+    }, 7_000)
+    return popup
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -105,9 +198,31 @@ fun AppSettingsScreen(
     navigateToPurchase: () -> Unit,
     navigateToTroubleshooting: () -> Unit,
     navigateToOpenSourceLicenses: () -> Unit,
-    navigateToReleaseNotesScreen: () -> Unit
+    navigateToReleaseNotesScreen: () -> Unit,
+    navigateToLanguage: () -> Unit,
+    navigateToFeatureStatus: () -> Unit = {}
 ) {
     val context = LocalContext.current
+    val previewPopup = remember { mutableStateOf<PopupWindow?>(null) }
+    val previewIsland = remember { mutableStateOf<IslandWindow?>(null) }
+    androidx.compose.runtime.DisposableEffect(Unit) {
+        onDispose { previewPopup.value?.dismissImmediately(); previewIsland.value?.forceClose() }
+    }
+    val registered = remember { mutableStateOf(false) }
+    val detectionFailed = remember { mutableStateOf(false) }
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    androidx.compose.runtime.DisposableEffect(lifecycleOwner, context) {
+        fun refresh() {
+            registered.value = me.kavishdevar.librepods.bluetooth.CompanionRegistration.selectedAssociation(context) != null
+            detectionFailed.value = context.getSharedPreferences("settings", Context.MODE_PRIVATE).getBoolean("companion_observation_failed", false)
+        }
+        refresh()
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) refresh()
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
     val scrollState = rememberScrollState()
     val state by viewModel.uiState.collectAsState()
 
@@ -120,8 +235,8 @@ fun AppSettingsScreen(
     val descriptionFocusRequester = remember { FocusRequester() }
 
     val m3eEnabled = LocalDesignSystem.current == DesignSystem.Material
-    val topPadding = if (m3eEnabled) 16.dp else WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 84.dp
-    val bottomPadding = if (m3eEnabled) 0.dp else WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 12.dp
+    val topPadding = screenTopPadding(material = 16.dp)
+    val bottomPadding = screenBottomPadding(material = 0.dp)
 
     Column(
         modifier = Modifier
@@ -179,19 +294,34 @@ fun AppSettingsScreen(
                         fontSize = 16.sp,
                         fontWeight = FontWeight.Bold,
                         color = Color.White,
-                        fontFamily = FontFamily(Font(R.font.sf_pro))
+                        fontFamily = sfProFamily
                     )
                 )
             }
         }
 
-        StyledToggle(
-            title = stringResource(R.string.appearance),
-            label = stringResource(R.string.use_material3e),
-            checked = state.m3eEnabled,
-            onCheckedChange = viewModel::setm3eEnabled,
-            enabled = state.isPremium
+        GeneralSettingsSection(
+            languageSummary = AppLanguage.summary(context),
+            registered = registered.value,
+            detectionFailed = detectionFailed.value,
+            navigateToLanguage = navigateToLanguage,
+            navigateToFeatureStatus = navigateToFeatureStatus,
+            manageCompanion = { context.startActivity(Intent(context, CompanionRegistrationActivity::class.java)) }
         )
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        StyledList(title = stringResource(R.string.appearance)) {
+            AppDesign.availableDesigns.forEach { design ->
+                StyledListItem(
+                    name = stringResource(design.labelRes),
+                    selected = state.appDesign == design,
+                    onClick = { viewModel.setAppDesign(design) }
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
 
         if (state.connectionSuccessful) {
             StyledToggle(
@@ -211,11 +341,43 @@ fun AppSettingsScreen(
                     onCheckedChange = viewModel::setShowBottomSheetPopup,
                 )
 
+                StyledListItem(
+                    name = stringResource(R.string.preview_popup),
+                    description = stringResource(R.string.preview_popup_description),
+                    orientation = ListItemOrientation.Vertical,
+                    onClick = { previewPopup.value?.dismissImmediately(); previewPopup.value = previewConnectionPopup(context) }
+                )
+
                 StyledToggle(
                     label = stringResource(R.string.show_island_popup),
                     description = stringResource(R.string.show_island_popup_description),
                     checked = state.showIslandPopup,
                     onCheckedChange = viewModel::setShowIslandPopup,
+                )
+                StyledListItem(name = stringResource(R.string.preview_island_popup),
+                    description = stringResource(R.string.preview_island_popup_description),
+                    orientation = ListItemOrientation.Vertical,
+                    onClick = { previewIsland.value?.forceClose(); previewIsland.value = previewIslandPopup(context) })
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            StyledList(title = stringResource(R.string.quick_settings_tile)) {
+                StyledToggle(
+                    label = stringResource(R.string.open_dialog_for_controlling),
+                    description = stringResource(R.string.open_dialog_for_controlling_description),
+                    checked = state.quickSettingsDialog,
+                    onCheckedChange = viewModel::setQuickSettingsDialog,
+                )
+
+                StyledListItem(
+                    name = stringResource(R.string.preview_popup),
+                    orientation = ListItemOrientation.Vertical,
+                    onClick = {
+                        context.startActivity(
+                            Intent(context, QuickSettingsDialogActivity::class.java).putExtra(QuickSettingsDialogActivity.EXTRA_PREVIEW, true).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        )
+                    }
                 )
             }
 
@@ -250,7 +412,8 @@ fun AppSettingsScreen(
                 label = stringResource(R.string.conversational_awareness_volume),
                 value = conversationalAwarenessVolume,
                 valueRange = 10f..85f,
-                snapPoints = listOf(44f),
+                snapPoints = listOf(ConversationalAwarenessDefaults.VOLUME_PERCENT.toFloat()),
+                snapThreshold = ConversationalAwarenessDefaults.SNAP_THRESHOLD,
                 startLabel = "10%",
                 endLabel = "85%",
                 onValueChange = { newValue ->
@@ -290,27 +453,31 @@ fun AppSettingsScreen(
                 )
             }
 
+            val takeoverSupported = state.isPremium && state.vendorIdHook &&
+                XposedState.isAvailable && XposedState.bluetoothScopeEnabled
+            Text(stringResource(if (takeoverSupported) R.string.takeover_explanation else R.string.takeover_unavailable),
+                style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(16.dp))
             StyledList(title = stringResource(R.string.takeover_airpods_state)) {
                 StyledToggle(
                     label = stringResource(R.string.takeover_disconnected),
                     description = stringResource(R.string.takeover_disconnected_desc),
                     checked = state.takeoverWhenDisconnected,
                     onCheckedChange = viewModel::setTakeoverWhenDisconnected,
-                    enabled = state.isPremium
+                    enabled = takeoverSupported
                 )
                 StyledToggle(
                     label = stringResource(R.string.takeover_idle),
                     description = stringResource(R.string.takeover_idle_desc),
                     checked = state.takeoverWhenIdle,
                     onCheckedChange = viewModel::setTakeoverWhenIdle,
-                    enabled = state.isPremium
+                    enabled = takeoverSupported
                 )
                 StyledToggle(
                     label = stringResource(R.string.takeover_music),
                     description = stringResource(R.string.takeover_music_desc),
                     checked = state.takeoverWhenMusic,
                     onCheckedChange = viewModel::setTakeoverWhenMusic,
-                    enabled = state.isPremium
+                    enabled = takeoverSupported
                 )
 
                 StyledToggle(
@@ -318,7 +485,7 @@ fun AppSettingsScreen(
                     description = stringResource(R.string.takeover_call_desc),
                     checked = state.takeoverWhenCall,
                     onCheckedChange = viewModel::setTakeoverWhenCall,
-                    enabled = state.isPremium
+                    enabled = takeoverSupported
                 )
             }
 
@@ -330,14 +497,14 @@ fun AppSettingsScreen(
                     description = stringResource(R.string.takeover_ringing_call_desc),
                     checked = state.takeoverWhenRingingCall,
                     onCheckedChange = viewModel::setTakeoverWhenRingingCall,
-                    enabled = state.isPremium
+                    enabled = takeoverSupported
                 )
                 StyledToggle(
                     label = stringResource(R.string.takeover_media_start),
                     description = stringResource(R.string.takeover_media_start_desc),
                     checked = state.takeoverWhenMediaStart,
                     onCheckedChange = viewModel::setTakeoverWhenMediaStart,
-                    enabled = state.isPremium
+                    enabled = takeoverSupported
                 )
             }
 
@@ -454,14 +621,14 @@ fun AppSettingsScreen(
             AlertDialog(onDismissRequest = { viewModel.setShowCameraDialog(false) }, title = {
                 Text(
                     stringResource(R.string.set_custom_camera_package),
-                    fontFamily = FontFamily(Font(R.font.sf_pro)),
+                    fontFamily = sfProFamily,
                     fontWeight = FontWeight.Medium
                 )
             }, text = {
                 Column {
                     Text(
                         stringResource(R.string.enter_custom_camera_package),
-                        fontFamily = FontFamily(Font(R.font.sf_pro)),
+                        fontFamily = sfProFamily,
                         modifier = Modifier.padding(bottom = 8.dp)
                     )
 
@@ -501,8 +668,8 @@ fun AppSettingsScreen(
                         Toast.makeText(context, successText, Toast.LENGTH_SHORT).show()
                     }) {
                     Text(
-                        "Save",
-                        fontFamily = FontFamily(Font(R.font.sf_pro)),
+                        stringResource(R.string.save),
+                        fontFamily = sfProFamily,
                         fontWeight = FontWeight.Medium
                     )
                 }
@@ -510,13 +677,55 @@ fun AppSettingsScreen(
                 TextButton(
                     onClick = { viewModel.setShowCameraDialog(false) }) {
                     Text(
-                        "Cancel",
-                        fontFamily = FontFamily(Font(R.font.sf_pro)),
+                        stringResource(R.string.cancel),
+                        fontFamily = sfProFamily,
                         fontWeight = FontWeight.Medium
                     )
                 }
             })
         }
+    }
+
+    val sendContactEmail: () -> Unit = {
+        contactBottomSheet.value = false
+        val intent = Intent(Intent.ACTION_SENDTO).apply {
+            data = "mailto:".toUri()
+            putExtra(Intent.EXTRA_EMAIL, arrayOf("contact@kavish.xyz"))
+            putExtra(Intent.EXTRA_SUBJECT, "LibrePods: ${subjectState.text}")
+            putExtra(
+                Intent.EXTRA_TEXT,
+                "${descriptionState.text}" +
+                    "\n\n----------" +
+                    "\nPhone details:" +
+                    "\nMANUFACTURER: ${Build.MANUFACTURER}" +
+                    "\nMODEL: ${Build.MODEL} (${Build.PRODUCT})" +
+                    "\nDISPLAY_VERSION: ${Build.DISPLAY}" +
+                    "\nID: ${Build.ID} (SDK ${Build.VERSION.SDK_INT_FULL})" +
+                    "\nXposed enabled/active: ${XposedState.isAvailable}/${XposedState.bluetoothScopeEnabled}" +
+                    "\n\nApp details:" +
+                    "\nVERSION: ${BuildConfig.VERSION_NAME}" +
+                    "\nVERSION_CODE: ${BuildConfig.VERSION_CODE}" +
+                    "\nFLAVOR: ${BuildConfig.FLAVOR}" +
+                    "\nBUILD_TYPE: ${BuildConfig.BUILD_TYPE}"
+            )
+        }
+        context.startActivity(intent)
+        subjectState.clearText()
+        descriptionState.clearText()
+    }
+
+    if (LocalDesignSystem.current != DesignSystem.Apple) {
+        if (contactBottomSheet.value) {
+            ContactSheet(
+                subjectState = subjectState,
+                descriptionState = descriptionState,
+                subjectFocusRequester = subjectFocusRequester,
+                descriptionFocusRequester = descriptionFocusRequester,
+                onDismiss = { contactBottomSheet.value = false },
+                onSend = sendContactEmail
+            )
+        }
+        return
     }
 
     StyledBottomSheet(
@@ -541,6 +750,7 @@ fun AppSettingsScreen(
            ) {
                StyledIconButton(
                    icon = "\uDBC0\uDD84",
+                   contentDescription = stringResource(R.string.cancel),
                    backdrop = innerBackdrop,
                    onClick = { contactBottomSheet.value = false }
                )
@@ -548,7 +758,7 @@ fun AppSettingsScreen(
                    text = stringResource(R.string.describe_your_issue),
                    style = TextStyle(
                        fontSize = 18.sp,
-                       fontFamily = FontFamily(Font(R.font.sf_pro)),
+                       fontFamily = sfProFamily,
                        fontWeight = FontWeight.Bold,
                        textAlign = TextAlign.Center,
                        color = if (isSystemInDarkTheme()) Color.White else Color.Black
@@ -556,37 +766,12 @@ fun AppSettingsScreen(
                )
                StyledIconButton(
                    icon = "\uDBC0\uDE1F",
+                   contentDescription = stringResource(R.string.email),
                    backdrop = innerBackdrop,
                    surfaceColor = if (isSystemInDarkTheme()) Color(0xFF0091FF) else Color(0xFF0088FF),
                    iconTint = if (subjectState.text.isNotEmpty() && descriptionState.text.isNotEmpty()) Color.White else Color.Gray,
                    enabled = subjectState.text.isNotEmpty() && descriptionState.text.isNotEmpty(),
-                   onClick = {
-                       contactBottomSheet.value = false
-                       val intent = Intent(Intent.ACTION_SENDTO).apply {
-                           data = "mailto:".toUri()
-                           putExtra(Intent.EXTRA_EMAIL, arrayOf("contact@kavish.xyz"))
-                           putExtra(Intent.EXTRA_SUBJECT, "LibrePods: ${subjectState.text}")
-                           putExtra(
-                               Intent.EXTRA_TEXT,
-                               "${descriptionState.text}" +
-                                   "\n\n----------" +
-                                   "\nPhone details:" +
-                                   "\nMANUFACTURER: ${Build.MANUFACTURER}" +
-                                   "\nMODEL: ${Build.MODEL} (${Build.PRODUCT})" +
-                                   "\nDISPLAY_VERSION: ${Build.DISPLAY}" +
-                                   "\nID: ${Build.ID} (SDK ${Build.VERSION.SDK_INT_FULL})" +
-                                   "\nXposed enabled/active: ${XposedState.isAvailable}/${XposedState.bluetoothScopeEnabled}" +
-                                   "\n\nApp details:" +
-                                   "\nVERSION: ${BuildConfig.VERSION_NAME}" +
-                                   "\nVERSION_CODE: ${BuildConfig.VERSION_CODE}" +
-                                   "\nFLAVOR: ${BuildConfig.FLAVOR}" +
-                                   "\nBUILD_TYPE: ${BuildConfig.BUILD_TYPE}"
-                           )
-                       }
-                       context.startActivity(intent)
-                       subjectState.clearText()
-                       descriptionState.clearText()
-                   }
+                   onClick = sendContactEmail
                )
            }
 
@@ -609,5 +794,80 @@ fun AppSettingsScreen(
                forceApple = true
            )
         }
+    }
+}
+
+/** The e-mail form as a standard bottom sheet, for the One UI and Material looks. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun ContactSheet(
+    subjectState: TextFieldState,
+    descriptionState: TextFieldState,
+    subjectFocusRequester: FocusRequester,
+    descriptionFocusRequester: FocusRequester,
+    onDismiss: () -> Unit,
+    onSend: () -> Unit,
+) {
+    val oneUI = LocalOneUI.current
+    val canSend = subjectState.text.isNotEmpty() && descriptionState.text.isNotEmpty()
+    val form: @Composable () -> Unit = {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .then(if (oneUI) Modifier.statusBarsPadding().navigationBarsPadding() else Modifier.imePadding())
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 16.dp)
+                .padding(bottom = 16.dp)
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                IconButton(onClick = onDismiss) {
+                    Icon(Icons.Default.Close, contentDescription = stringResource(R.string.cancel))
+                }
+                Text(
+                    text = stringResource(R.string.describe_your_issue),
+                    style = if (oneUI) OneUIText.toolbarTitle.copy(fontSize = 19.sp) else MaterialTheme.typography.titleLarge.copy(fontSize = 22.sp, lineHeight = 28.sp),
+                    textAlign = TextAlign.Center,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
+                )
+                if (oneUI) {
+                    IconButton(onClick = onSend, enabled = canSend) {
+                        Icon(Icons.AutoMirrored.Filled.Send, contentDescription = stringResource(R.string.email))
+                    }
+                } else {
+                    FilledIconButton(onClick = onSend, enabled = canSend) {
+                        Icon(Icons.AutoMirrored.Filled.Send, contentDescription = stringResource(R.string.email))
+                    }
+                }
+            }
+            StyledInputField(
+                inputState = subjectState,
+                focusRequester = subjectFocusRequester,
+                placeholder = if (oneUI) stringResource(R.string.subject) else "",
+                label = stringResource(R.string.subject)
+            )
+            Spacer(modifier = Modifier.height(12.dp))
+            StyledInputField(
+                inputState = descriptionState,
+                focusRequester = descriptionFocusRequester,
+                placeholder = if (oneUI) stringResource(R.string.describe_your_issue) else "",
+                singleLine = false,
+                label = stringResource(R.string.describe_your_issue)
+            )
+        }
+    }
+    if (oneUI) {
+        OneUIBottomSheet(onDismiss = onDismiss, content = form)
+    } else {
+        ModalBottomSheet(
+            onDismissRequest = onDismiss,
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        ) { form() }
     }
 }

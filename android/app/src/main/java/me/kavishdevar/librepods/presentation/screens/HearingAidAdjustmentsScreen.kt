@@ -49,6 +49,8 @@ import androidx.compose.ui.unit.dp
 import dev.chrisbanes.haze.materials.ExperimentalHazeMaterialsApi
 import kotlinx.coroutines.Job
 import me.kavishdevar.librepods.R
+import me.kavishdevar.librepods.presentation.components.screenBottomPadding
+import me.kavishdevar.librepods.presentation.components.screenTopPadding
 import me.kavishdevar.librepods.bluetooth.AACPManager
 import me.kavishdevar.librepods.data.HearingAidSettings
 import me.kavishdevar.librepods.data.parseHearingAidSettingsResponse
@@ -70,8 +72,6 @@ fun HearingAidAdjustmentsScreen(viewModel: AirPodsViewModel) {
     val verticalScrollState = rememberScrollState()
     val state by viewModel.uiState.collectAsState()
 
-    val debounceJob = remember { mutableStateOf<Job?>(null) }
-
     val amplificationSliderValue = rememberSaveable { mutableFloatStateOf(0.5f) }
     val balanceSliderValue = rememberSaveable { mutableFloatStateOf(0.5f) }
     val toneSliderValue = rememberSaveable { mutableFloatStateOf(0.5f) }
@@ -82,6 +82,7 @@ fun HearingAidAdjustmentsScreen(viewModel: AirPodsViewModel) {
     val ownVoiceAmplification = rememberSaveable { mutableFloatStateOf(0.5f) }
 
     val initialized = rememberSaveable { mutableStateOf(false) }
+    val userEdited = remember { mutableStateOf(false) }
 
     val hearingAidSettings = remember { mutableStateOf(
         HearingAidSettings(
@@ -123,7 +124,8 @@ fun HearingAidAdjustmentsScreen(viewModel: AirPodsViewModel) {
         ambientNoiseReductionSliderValue.floatValue,
         ownVoiceAmplification.floatValue
     ) {
-        if (!initialized.value) return@LaunchedEffect
+        if (!initialized.value || !userEdited.value) return@LaunchedEffect
+        userEdited.value = false
         hearingAidSettings.value = HearingAidSettings(
             leftEQ = leftEQ.value,
             rightEQ = rightEQ.value,
@@ -140,12 +142,12 @@ fun HearingAidAdjustmentsScreen(viewModel: AirPodsViewModel) {
             ownVoiceAmplification = ownVoiceAmplification.floatValue
         )
         Log.d(TAG, "Updated settings: ${hearingAidSettings.value}")
-        sendHearingAidSettings(state.hearingAidData, hearingAidSettings.value, debounceJob, viewModel::setATTCharacteristicValue)
+        sendHearingAidSettings(state.hearingAidData, hearingAidSettings.value, viewModel::setATTCharacteristicValue)
     }
 
     val m3eEnabled = LocalDesignSystem.current == DesignSystem.Material
-    val topPadding = if (m3eEnabled) 0.dp else WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 84.dp
-    val bottomPadding = if (m3eEnabled) 0.dp else WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 12.dp
+    val topPadding = screenTopPadding(material = 0.dp)
+    val bottomPadding = screenBottomPadding(material = 0.dp)
 
     Column(
         modifier = Modifier
@@ -161,7 +163,7 @@ fun HearingAidAdjustmentsScreen(viewModel: AirPodsViewModel) {
             label = stringResource(R.string.amplification),
             valueRange = -1f..1f,
             value = amplificationSliderValue.floatValue,
-            onValueChange = {
+            onValueChange = { userEdited.value = true;
                 amplificationSliderValue.floatValue = it
             },
             startIcon = "􀊥",
@@ -180,7 +182,7 @@ fun HearingAidAdjustmentsScreen(viewModel: AirPodsViewModel) {
             label = stringResource(R.string.balance),
             valueRange = -1f..1f,
             value = balanceSliderValue.floatValue,
-            onValueChange = {
+            onValueChange = { userEdited.value = true;
                 balanceSliderValue.floatValue = it
             },
             snapPoints = listOf(-1f, 0f, 1f),
@@ -193,7 +195,7 @@ fun HearingAidAdjustmentsScreen(viewModel: AirPodsViewModel) {
             label = stringResource(R.string.tone),
             valueRange = -1f..1f,
             value = toneSliderValue.floatValue,
-            onValueChange = {
+            onValueChange = { userEdited.value = true;
                 toneSliderValue.floatValue = it
             },
             startLabel = stringResource(R.string.darker),
@@ -205,7 +207,7 @@ fun HearingAidAdjustmentsScreen(viewModel: AirPodsViewModel) {
             label = stringResource(R.string.ambient_noise_reduction),
             valueRange = 0f..1f,
             value = ambientNoiseReductionSliderValue.floatValue,
-            onValueChange = {
+            onValueChange = { userEdited.value = true;
                 ambientNoiseReductionSliderValue.floatValue = it
             },
             startLabel = stringResource(R.string.less),
@@ -216,7 +218,7 @@ fun HearingAidAdjustmentsScreen(viewModel: AirPodsViewModel) {
         StyledToggle(
             label = stringResource(R.string.conversation_boost),
             checked = conversationBoostEnabled.value,
-            onCheckedChange = { conversationBoostEnabled.value = it },
+            onCheckedChange = { userEdited.value = true; conversationBoostEnabled.value = it },
             description = stringResource(R.string.conversation_boost_description)
         )
 

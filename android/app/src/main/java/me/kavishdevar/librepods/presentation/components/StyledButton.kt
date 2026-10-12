@@ -18,6 +18,7 @@
 
 package me.kavishdevar.librepods.presentation.components
 
+import me.kavishdevar.librepods.presentation.theme.AppleCapsule
 import android.graphics.RuntimeShader
 import android.os.Build
 import androidx.compose.animation.core.Animatable
@@ -30,6 +31,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
@@ -37,7 +39,13 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ProvideTextStyle
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
+import me.kavishdevar.librepods.presentation.theme.LocalOneUI
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -56,6 +64,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.util.fastCoerceAtMost
 import androidx.compose.ui.util.fastCoerceIn
 import androidx.compose.ui.util.lerp
@@ -67,6 +76,7 @@ import com.kyant.backdrop.effects.vibrancy
 import com.kyant.backdrop.highlight.Highlight
 import kotlinx.coroutines.launch
 import me.kavishdevar.librepods.presentation.theme.DesignSystem
+import me.kavishdevar.librepods.presentation.theme.AppleShape
 import me.kavishdevar.librepods.presentation.theme.LocalDesignSystem
 import me.kavishdevar.librepods.utils.inspectDragGestures
 import kotlin.math.abs
@@ -95,6 +105,23 @@ fun StyledButton(
     materialButtonStyle: MaterialButtonStyle = MaterialButtonStyle.Tonal, // picking tonal because most usages assume a transparent/gray background, tonal will give a slightly less vibrant background
     content: @Composable RowScope.() -> Unit,
 ) {
+    if (LocalOneUI.current) {
+        OneUIButton(
+            onClick = onClick,
+            modifier = modifier,
+            enabled = enabled,
+            filled = surfaceColor.isSpecified || materialButtonStyle == MaterialButtonStyle.Filled,
+            containerColor = surfaceColor,
+            content = content
+        )
+        return
+    }
+    // Labels that don't set a style get the look's button text.
+    val labelledContent: @Composable RowScope.() -> Unit = {
+        ProvideTextStyle(if (LocalDesignSystem.current == DesignSystem.Apple)
+            MaterialTheme.typography.bodyLarge.copy(fontSize = 17.sp)
+        else MaterialTheme.typography.bodyMedium) { content() }
+    }
     when (LocalDesignSystem.current) {
         DesignSystem.Material -> {
             when (materialButtonStyle) {
@@ -102,14 +129,14 @@ fun StyledButton(
                     Button(
                         modifier = modifier.height(48.dp),
                         onClick = onClick,
-                        content = content
+                        content = labelledContent
                     )
                 }
                 MaterialButtonStyle.Tonal -> {
                     FilledTonalButton(
                         modifier = modifier.height(48.dp),
                         onClick = onClick,
-                        content = content,
+                        content = labelledContent,
                         colors = ButtonDefaults.filledTonalButtonColors(containerColor = surfaceColor)
                     )
                 }
@@ -118,7 +145,7 @@ fun StyledButton(
                     OutlinedButton(
                         modifier = modifier.height(48.dp),
                         onClick = onClick,
-                        content = content
+                        content = labelledContent
                     )
                 }
 
@@ -126,19 +153,31 @@ fun StyledButton(
                     TextButton(
                         modifier = modifier.height(48.dp),
                         onClick = onClick,
-                        content = content
+                        content = labelledContent
                     )
                 }
             }
         }
         DesignSystem.Apple -> {
             val isInteractive = enabled && isInteractive
+            val surfaceColor = if (!surfaceColor.isSpecified && materialButtonStyle == MaterialButtonStyle.Filled)
+                MaterialTheme.colorScheme.primary else surfaceColor
+            val foreground = (if (surfaceColor == MaterialTheme.colorScheme.primary)
+                MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface)
+                .copy(alpha = if (enabled) 1f else 0.38f)
             val scope = rememberCoroutineScope()
             val haptics = LocalHapticFeedback.current
             val progressAnimation = remember { Animatable(0f) }
             var pressStartPosition by remember { mutableStateOf(Offset.Zero) }
             val offsetAnimation = remember { Animatable(Offset.Zero, Offset.VectorConverter) }
             var isPressed by remember { mutableStateOf(false) }
+            LaunchedEffect(enabled) {
+                if (!enabled) {
+                    isPressed = false
+                    progressAnimation.snapTo(0f)
+                    offsetAnimation.snapTo(Offset.Zero)
+                }
+            }
 
             val interactiveHighlightShader = remember {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -167,7 +206,8 @@ half4 main(float2 coord) {
                         if (!isInteractive) {
                             Modifier.drawBackdrop(
                                 backdrop = backdrop,
-                                shape = { RoundedCornerShape(28f.dp) },
+                                shape = { AppleCapsule },
+                                shadow = null,
                                 effects = {
                                     blur(16f.dp.toPx())
                                 },
@@ -204,7 +244,7 @@ half4 main(float2 coord) {
                         } else {
                             Modifier.drawBackdrop(
                                 backdrop = backdrop,
-                                shape = { RoundedCornerShape(28f.dp) },
+                                shape = { AppleCapsule },
                                 effects = {
                                     vibrancy()
                                     blur(2f.dp.toPx())
@@ -301,6 +341,7 @@ half4 main(float2 coord) {
                         }
                     )
                     .clickable(
+                        enabled = enabled,
                         interactionSource = null,
                         indication = null,
                         role = Role.Button,
@@ -313,18 +354,13 @@ half4 main(float2 coord) {
                     )
                     .then(
                         if (isInteractive) {
-                            Modifier.pointerInput(scope) {
+                            Modifier.pointerInput(scope, enabled) {
                                 val progressAnimationSpec = spring(0.5f, 300f, 0.001f)
                                 val offsetAnimationSpec =
                                     spring(1f, 300f, Offset.VisibilityThreshold)
                                 val onDragStop: () -> Unit = {
                                     if (enabled) {
                                         scope.launch {
-                                            launch {
-                                                haptics.performHapticFeedback(
-                                                    HapticFeedbackType.Reject
-                                                )
-                                            }
                                             launch {
                                                 progressAnimation.animateTo(
                                                     0f,
@@ -346,11 +382,6 @@ half4 main(float2 coord) {
                                         if (enabled) {
                                             scope.launch {
                                                 launch {
-                                                    haptics.performHapticFeedback(
-                                                        HapticFeedbackType.SegmentFrequentTick
-                                                    )
-                                                }
-                                                launch {
                                                     progressAnimation.animateTo(
                                                         1f,
                                                         progressAnimationSpec
@@ -367,37 +398,28 @@ half4 main(float2 coord) {
                                 ) { _, dragAmount ->
                                     if (enabled) {
                                         scope.launch {
-                                            if (dragAmount.getDistanceSquared() > 350) haptics.performHapticFeedback(
-                                                HapticFeedbackType.SegmentFrequentTick
-                                            )
                                             offsetAnimation.snapTo(offsetAnimation.value + dragAmount)
                                         }
                                     }
                                 }
                             }
-                        } else {
-                            Modifier.pointerInput(Unit) {
-                                detectTapGestures(
-                                    onPress = {
-                                        isPressed = true
-                                        tryAwaitRelease()
-                                        isPressed = false
-                                    },
-                                    onTap = {
-                                        if (enabled) {
-                                            haptics.performHapticFeedback(HapticFeedbackType.ContextClick)
-                                            onClick()
-                                        }
-                                    }
-                                )
+                        } else if (enabled) {
+                            Modifier.pointerInput(enabled) {
+                                inspectDragGestures(
+                                    onDragStart = { isPressed = true },
+                                    onDragEnd = { isPressed = false },
+                                    onDragCancel = { isPressed = false }
+                                ) { _, _ -> }
                             }
-                        }
+                        } else Modifier
                     )
-                    .height(48f.dp)
-                    .padding(horizontal = 16f.dp),
+                    .heightIn(min = 50.dp)
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
                 horizontalArrangement = Arrangement.spacedBy(8f.dp, Alignment.CenterHorizontally),
                 verticalAlignment = Alignment.CenterVertically,
-                content = content
+                content = {
+                    CompositionLocalProvider(LocalContentColor provides foreground) { labelledContent() }
+                }
             )
         }
     }

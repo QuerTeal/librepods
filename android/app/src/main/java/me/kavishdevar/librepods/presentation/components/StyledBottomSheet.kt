@@ -1,5 +1,6 @@
 package me.kavishdevar.librepods.presentation.components
 
+import me.kavishdevar.librepods.presentation.theme.AppleShape
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
@@ -36,6 +37,7 @@ fun StyledBottomSheet(
     if (!visible) return
 
     val isDarkTheme = isSystemInDarkTheme()
+    val contentDensity = androidx.compose.ui.platform.LocalDensity.current
     val sheetState = rememberModalBottomSheetState(false) // move this to parent composable
 
     val isExpanded =  sheetState.targetValue == SheetValue.Expanded
@@ -52,36 +54,38 @@ fun StyledBottomSheet(
         sheetState = sheetState,
         containerColor = Color.Transparent,
         dragHandle = { },
-        shape = RoundedCornerShape(animatedCorner),
+        shape = AppleShape(animatedCorner),
         scrimColor = Color.Transparent,
         modifier = Modifier.padding(4.dp)
     ) {
-        val innerBackdrop = rememberLayerBackdrop()
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(animatedCorner))
-                .drawBackdrop(
-                    backdrop = backdrop,
-                    exportedBackdrop = innerBackdrop,
-                    shape = { RoundedCornerShape(animatedCorner) },
-                    effects = {
-                        vibrancy()
-                        blur(4f.dp.toPx())
-                        lens(12f.dp.toPx(), 48f.dp.toPx(), true)
-                    },
-                    onDrawSurface = {
-                        drawRect(
-                            if (isDarkTheme) Color.DarkGray.copy(alpha = 0.3f) else Color(
-                                0xFFE0E0E0
-                            ).copy(alpha = 0.45f)
-                        )
-                    }
-                )
-                .padding(top = 24.dp)
-                .padding(horizontal = 16.dp)
-        ) {
-            content(innerBackdrop, progress)
+        androidx.compose.runtime.CompositionLocalProvider(androidx.compose.ui.platform.LocalDensity provides contentDensity) {
+            val innerBackdrop = rememberLayerBackdrop()
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(AppleShape(animatedCorner))
+                    .drawBackdrop(
+                        backdrop = backdrop,
+                        exportedBackdrop = innerBackdrop,
+                        shape = { AppleShape(animatedCorner) },
+                        effects = {
+                            vibrancy()
+                            blur(4f.dp.toPx())
+                            lens(12f.dp.toPx(), 48f.dp.toPx(), true)
+                        },
+                        onDrawSurface = {
+                            drawRect(
+                                if (isDarkTheme) Color.DarkGray.copy(alpha = 0.3f) else Color(
+                                    0xFFE0E0E0
+                                ).copy(alpha = 0.45f)
+                            )
+                        }
+                    )
+                    .padding(top = 24.dp)
+                    .padding(horizontal = 16.dp)
+            ) {
+                content(innerBackdrop, progress)
+            }
         }
     }
 }

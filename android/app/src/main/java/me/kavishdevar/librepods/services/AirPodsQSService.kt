@@ -152,7 +152,7 @@ class AirPodsQSService : TileService() {
             return
         }
 
-        val clickBehavior = "cycle" // sharedPreferences.getString("qs_click_behavior", "dialog") ?: "dialog"
+        val clickBehavior = sharedPreferences.getString("qs_click_behavior", "cycle") ?: "cycle"
 
         if (clickBehavior == "dialog") {
             launchDialogActivity()
@@ -215,7 +215,7 @@ class AirPodsQSService : TileService() {
         } else {
             tile.state = Tile.STATE_UNAVAILABLE
             tile.label = "AirPods"
-            tile.subtitle = "Disconnected"
+            tile.subtitle = getString(R.string.disconnected)
             tile.icon = Icon.createWithResource(this, R.drawable.airpods)
         }
 
@@ -228,7 +228,8 @@ class AirPodsQSService : TileService() {
     }
 
     private fun isOffModeEnabled(): Boolean {
-        return sharedPreferences.getBoolean("off_listening_mode", true)
+        return ServiceManager.getService()?.isOffListeningModeAllowed()
+            ?: sharedPreferences.getBoolean("off_listening_mode", false)
     }
 
     private fun getAvailableModes(): List<Int> {
@@ -254,10 +255,10 @@ class AirPodsQSService : TileService() {
 
     private fun getModeLabel(mode: Int): String {
         return when (mode) {
-            NoiseControlMode.OFF.ordinal + 1 -> "Off"
-            NoiseControlMode.TRANSPARENCY.ordinal + 1 -> "Transparency"
-            NoiseControlMode.ADAPTIVE.ordinal + 1 -> "Adaptive"
-            NoiseControlMode.NOISE_CANCELLATION.ordinal + 1 -> "Noise Cancellation"
+            NoiseControlMode.OFF.ordinal + 1 -> getString(R.string.off)
+            NoiseControlMode.TRANSPARENCY.ordinal + 1 -> getString(R.string.transparency)
+            NoiseControlMode.ADAPTIVE.ordinal + 1 -> getString(R.string.adaptive)
+            NoiseControlMode.NOISE_CANCELLATION.ordinal + 1 -> getString(R.string.noise_cancellation)
             else -> "Unknown"
         }
     }

@@ -4,6 +4,11 @@
     <color name="white">#FFFFFFFF</color>
     <color name="popup_background">#FFFFFF</color>
     <color name="popup_text">@color/black</color>
+    <color name="popup_close_background">#08000000</color>
+    <color name="popup_close_pressed">#1F000000</color>
+    <color name="popup_scrim">#66000000</color>
+    <!-- The one color every battery gauge uses (popup, main screen, island, widget). -->
+    <color name="battery_level">#34C759</color>
     <color name="widget_background">#87FFFFFF</color>
     <color name="widget_text">@color/black</color>
     <color name="light_blue_50">#FFE1F5FE</color>

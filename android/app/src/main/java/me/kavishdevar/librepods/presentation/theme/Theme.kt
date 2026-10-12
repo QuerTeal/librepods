@@ -27,6 +27,10 @@ import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import me.kavishdevar.librepods.presentation.components.OneUIPressIndication
+import androidx.compose.runtime.remember
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.foundation.LocalIndication
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -35,6 +39,8 @@ val ColorScheme.sectionHeader: Color
     get() = onBackground.copy(alpha = 0.6f)
 
 private val AppleDarkColorScheme = darkColorScheme(
+    onSurfaceVariant = Color(0xFF98989D),
+    outlineVariant = Color(0xFF38383A),
     surfaceContainer = Color(0xFF000000), // for some reason background is not used as the background in gmail and settings app, but surfacecontainer, so using that
     onBackground = Color(0xFFFFFFFF),
     surface = Color(0xFF1C1C1E),
@@ -47,6 +53,8 @@ private val AppleDarkColorScheme = darkColorScheme(
 )
 
 private val AppleLightColorScheme = lightColorScheme(
+    onSurfaceVariant = Color(0xFF8E8E93),
+    outlineVariant = Color(0xFFC6C6C8),
     surfaceContainer = Color(0xFFF2F2F7),
     onBackground = Color(0xFF000000),
     surface = Color(0xFFFFFFFF),
@@ -62,27 +70,42 @@ private val AppleLightColorScheme = lightColorScheme(
 fun LibrePodsTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
     m3eEnabled: Boolean = false,
+    design: AppDesign = if (m3eEnabled) AppDesign.OneUI else AppDesign.Apple,
     content: @Composable () -> Unit
 ) {
-    val colorScheme = when {
-        m3eEnabled -> {
+    // Legacy callers and saved Material choices also resolve to the available native design.
+    val activeDesign = AppDesign.fromPreferenceValue(design.prefValue)
+    val colorScheme = when (activeDesign) {
+        AppDesign.Material -> {
             val context = LocalContext.current
             if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
         }
-        darkTheme -> AppleDarkColorScheme
-        else -> AppleLightColorScheme
+        AppDesign.OneUI -> if (darkTheme) OneUIDarkColorScheme else OneUILightColorScheme
+        AppDesign.Apple -> if (darkTheme) AppleDarkColorScheme else AppleLightColorScheme
     }
 
     CompositionLocalProvider(
-        LocalDesignSystem provides
-            if (m3eEnabled) DesignSystem.Material
-            else DesignSystem.Apple
+        // One UI is built on the Material structure and restyled where LocalOneUI is set.
+        LocalDesignSystem provides if (activeDesign == AppDesign.Apple) DesignSystem.Apple else DesignSystem.Material,
+        LocalOneUI provides (activeDesign == AppDesign.OneUI),
+        LocalOneUIColors provides if (darkTheme) OneUIDarkColors else OneUILightColors
     ) {
         MaterialExpressiveTheme(
             colorScheme = colorScheme,
-            motionScheme = MotionScheme.expressive(),
-            typography = if (m3eEnabled) MaterialTypography else AppleTypography,
-            content = content
-        )
+            motionScheme = MotionScheme.standard(),
+            typography = when (activeDesign) {
+                AppDesign.Material -> MaterialTypography
+                AppDesign.OneUI -> OneUITypography
+                AppDesign.Apple -> AppleTypography
+            }
+        ) {
+            // Keep the app at the same composition position when the design changes.
+            val pressColor = MaterialTheme.colorScheme.onSurface
+            val oneUIIndication = remember(pressColor) { OneUIPressIndication(pressColor) }
+            CompositionLocalProvider(
+                LocalIndication provides oneUIIndication,
+                content = content
+            )
+        }
     }
 }

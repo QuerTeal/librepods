@@ -83,7 +83,7 @@ private val TextSize = 12.sp
 fun ControlCenterNoiseControlSegmentedButton(
     modifier: Modifier = Modifier,
     availableModes: List<NoiseControlMode>,
-    selectedMode: NoiseControlMode,
+    selectedMode: NoiseControlMode?,
     onModeSelected: (NoiseControlMode) -> Unit
 ) {
     val selectedIndex = availableModes.indexOf(selectedMode).coerceAtLeast(0)
@@ -123,7 +123,7 @@ fun ControlCenterNoiseControlSegmentedButton(
         when (selectedMode) {
             NoiseControlMode.ADAPTIVE -> AdaptiveRainbowBrush
             NoiseControlMode.OFF -> Brush.linearGradient(colors=listOf(SelectedIndicatorColorGray, SelectedIndicatorColorGray))
-            NoiseControlMode.TRANSPARENCY,
+            null, NoiseControlMode.TRANSPARENCY,
             NoiseControlMode.NOISE_CANCELLATION -> Brush.linearGradient(colors=listOf(SelectedIndicatorColorBlue, SelectedIndicatorColorBlue))
         }
     }
@@ -141,7 +141,7 @@ fun ControlCenterNoiseControlSegmentedButton(
                 .onSizeChanged { iconRowWidthPx = it.width.toFloat() },
             contentAlignment = Alignment.Center
         ) {
-            Box(
+            if (selectedMode != null) Box(
                 Modifier
                     .align(Alignment.CenterStart)
                     .offset(x = indicatorOffset)
