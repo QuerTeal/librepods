@@ -388,7 +388,7 @@ private fun ControlsFixture(design: AppDesign, showDialog: Boolean, onDesignChan
                 StyledListItem(name = "선택 항목", selected = selected, onClick = { selected = true; changes++ })
                 StyledListItem(name = "체크 항목", checked = checked, onClick = { checked = !checked; changes++ })
             }
-            NoiseControlSettings(true, mode) { mode = it; changes++ }
+            NoiseControlSettings(true, mode, onNoiseControlModeChanged = { mode = it; changes++ })
             StyledInputField(field, focus, label = "기기 이름")
             StyledSlider(label = "샘플 조절", value = sampleLevel, valueRange = 0f..100f, onValueChange = { sampleLevel = it; changes++ })
             StyledList {

@@ -106,6 +106,8 @@
     <string name="audio_and_routing">Audio &amp; Routing</string>
     <string name="controls_and_gestures">Controls &amp; Gestures</string>
     <string name="airpods_volume">Volume</string>
+    <string name="wear_both_for_adaptive">To use Adaptive Audio, wear both %1$s.</string>
+    <string name="wear_both_for_anc">To use Noise Cancellation, wear both %1$s.</string>
 </resources>
  
 

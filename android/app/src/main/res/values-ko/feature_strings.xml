@@ -105,5 +105,7 @@
     <string name="audio_and_routing">오디오 및 라우팅</string>
     <string name="controls_and_gestures">제어 항목 및 제스처</string>
     <string name="airpods_volume">음량</string>
+    <string name="wear_both_for_adaptive">적응형 오디오를 사용하려면 %1$s을(를) 양쪽 귀에 모두 착용하십시오.</string>
+    <string name="wear_both_for_anc">노이즈 캔슬링을 사용하려면 양쪽 %1$s 모두 귀에 착용하십시오.</string>
 </resources>
 

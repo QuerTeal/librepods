@@ -21,6 +21,7 @@
 package me.kavishdevar.librepods.presentation.screens
 
 // import me.kavishdevar.librepods.utils.RadareOffsetFinder
+import me.kavishdevar.librepods.data.NoiseControlMode
 import me.kavishdevar.librepods.presentation.navigation.AirPodsSection
 import me.kavishdevar.librepods.presentation.theme.AppleColors
 import me.kavishdevar.librepods.presentation.components.StyledList
@@ -435,6 +436,8 @@ fun AirPodsSettingsScreen(
                     Spacer(modifier = Modifier.height(sectionGap))
                 }
                 entry("noise_control") {
+                    val guidanceAdaptive = stringResource(R.string.wear_both_for_adaptive, state.modelName)
+                    val guidanceAnc = stringResource(R.string.wear_both_for_anc, state.modelName)
                     NoiseControlSettings(
                         showOffListeningMode = state.offListeningMode,
                         noiseControlModeValue = state.controlStates[AACPManager.Companion.ControlCommandIdentifiers.LISTENING_MODE]?.getOrNull(
@@ -444,6 +447,25 @@ fun AirPodsSettingsScreen(
                             setControlCommandInt(
                                 AACPManager.Companion.ControlCommandIdentifiers.LISTENING_MODE, it
                             )
+                        },
+                        adaptiveStrength = state.controlStates[AACPManager.Companion.ControlCommandIdentifiers.AUTO_ANC_STRENGTH]
+                            ?.firstOrNull()?.toInt()?.and(0xff)?.takeIf { it in 0..100 && features[AirPodsFeature.ADAPTIVE_AUDIO]?.canUse == true },
+                        onAdaptiveStrengthChange = {
+                            setControlCommandInt(AACPManager.Companion.ControlCommandIdentifiers.AUTO_ANC_STRENGTH, it)
+                        },
+                        wearGuidance = { value ->
+                            // Like iOS: Adaptive and Noise Cancellation need both buds in (one, if
+                            // "noise cancellation with one AirPod" is on). Unknown status never blocks.
+                            val worn = state.earStatus.take(2).count { it == 0.toByte() }
+                            val oneBudAllowed = state.controlStates[AACPManager.Companion.ControlCommandIdentifiers.ONE_BUD_ANC_MODE]
+                                ?.firstOrNull() == 0x01.toByte()
+                            val enough = state.earStatus.size < 2 || worn == 2 || (worn == 1 && oneBudAllowed)
+                            when {
+                                enough -> null
+                                value == NoiseControlMode.ADAPTIVE.ordinal + 1 -> guidanceAdaptive
+                                value == NoiseControlMode.NOISE_CANCELLATION.ordinal + 1 -> guidanceAnc
+                                else -> null
+                            }
                         },
                     )
                 }

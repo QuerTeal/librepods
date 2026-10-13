@@ -100,6 +100,8 @@ data class AirPodsUiState(
     val eqData: FloatArray = floatArrayOf(),
 
     val automaticEarDetectionEnabled: Boolean = true,
+    /** Per-bud wear status from the AirPods: 0 in ear, 1 out of ear, 2 in the case; empty if unknown. */
+    val earStatus: List<Byte> = emptyList(),
     val automaticConnectionEnabled: Boolean = true,
 
     val leftAction: StemAction = StemAction.CYCLE_NOISE_CONTROL_MODES,
@@ -419,6 +421,11 @@ class AirPodsViewModel(
                         }
                     }
 
+                    AirPodsNotifications.EAR_DETECTION_DATA -> {
+                        val data = intent.getByteArrayExtra("data") ?: byteArrayOf()
+                        _uiState.update { it.copy(earStatus = data.toList()) }
+                    }
+
                     AirPodsNotifications.EQ_DATA -> {
                         val data = intent.getFloatArrayExtra("eqData") ?: floatArrayOf()
 
@@ -439,6 +446,7 @@ class AirPodsViewModel(
             addAction(AirPodsNotifications.AIRPODS_DISCONNECTED)
             addAction(AirPodsNotifications.BATTERY_DATA)
             addAction(AirPodsNotifications.EQ_DATA)
+            addAction(AirPodsNotifications.EAR_DETECTION_DATA)
             addAction(AirPodsNotifications.AIRPODS_INFORMATION_UPDATED)
         }
 
@@ -552,6 +560,7 @@ class AirPodsViewModel(
                 it.copy(
                     isLocallyConnected = service.controlConnectionState.value.phase == ControlConnectionPhase.READY,
                     battery = service.getBattery(),
+                    earStatus = service.earDetectionNotification.status.take(2),
                     ancMode = controlRepo.getValue(ControlCommandIdentifiers.LISTENING_MODE)?.get(0)?.toInt() ?: 1,
                     controlStates = controlRepo.getMap()
                 )
