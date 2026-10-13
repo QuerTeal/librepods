@@ -88,7 +88,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.MutableStateFlow
 import androidx.compose.runtime.collectAsState
 import me.kavishdevar.librepods.bluetooth.CommandState
-import me.kavishdevar.librepods.bluetooth.ConfirmedControl
+import me.kavishdevar.librepods.bluetooth.ShownControl
 import me.kavishdevar.librepods.bluetooth.SettingPhase
 import me.kavishdevar.librepods.data.BatteryComponent
 import me.kavishdevar.librepods.data.BatteryStatus
@@ -338,8 +338,8 @@ fun NewControlCenterDialogContent(
     var demoMode by remember { mutableStateOf(NoiseControlMode.NOISE_CANCELLATION) }
     var demoConversation by remember { mutableStateOf(false) }
     val currentAncMode = if (isPreview) demoMode else
-        ConfirmedControl.listeningMode(commands[modeId])?.let { NoiseControlMode.entries[it - 1] }
-    val confirmedConversation = if (isPreview) demoConversation else ConfirmedControl.boolean(commands[convId])
+        ShownControl.listeningMode(commands[modeId])?.let { NoiseControlMode.entries[it - 1] }
+    val confirmedConversation = if (isPreview) demoConversation else ShownControl.boolean(commands[convId])
     val isConvAwarenessEnabled = confirmedConversation == true
     val requestMode: (NoiseControlMode) -> Unit = { mode ->
         if (isPreview) demoMode = mode else service?.requestControlCommand(modeId, byteArrayOf((mode.ordinal + 1).toByte()))
@@ -349,8 +349,8 @@ fun NewControlCenterDialogContent(
     }
     val notice = when {
         isPreview -> R.string.control_preview_notice
-        listOf(modeId, convId).any { commands[it]?.phase == SettingPhase.FAILED } -> R.string.setting_failed_notice
-        listOf(modeId, convId).any { commands[it]?.phase == SettingPhase.PENDING } -> R.string.setting_pending_notice
+        // A missing echo is not a failure on this firmware; only a write that never went out is.
+        listOf(modeId, convId).any { commands[it]?.failure == "send_failed" } -> R.string.setting_failed_notice
         currentAncMode == null || confirmedConversation == null -> R.string.setting_unknown_notice
         else -> null
     }

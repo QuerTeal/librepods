@@ -762,6 +762,8 @@ class AirPodsViewModel(
     }
 
     fun setAutomaticConnectionEnabled(enabled: Boolean) {
+        if (!isDemoMode && service.controlConnectionState.value.phase == ControlConnectionPhase.READY)
+            sharedPreferences.edit { putBoolean("automatic_connection_ctrl_cmd", enabled) }
         setControlCommandBoolean(ControlCommandIdentifiers.AUTOMATIC_CONNECTION_CONFIG, enabled)
     }
 

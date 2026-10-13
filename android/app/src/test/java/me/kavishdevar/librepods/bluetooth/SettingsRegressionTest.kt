@@ -80,4 +80,28 @@ class SettingsRegressionTest {
         assertEquals(true, ConfirmedControl.boolean(tracker.states.value[0x28]))
         assertEquals(SettingPhase.FAILED, tracker.states.value[0x28]?.phase)
     }
+
+    @Test fun deliveredWriteShowsUntilANewerDeviceReport() {
+        var now = 0L
+        val tracker = CommandTracker({ now })
+        tracker.receive(0x28, byteArrayOf(2))
+        now = 10
+        tracker.begin(0x28, byteArrayOf(1))
+        now = 5010
+        tracker.expire()
+        assertEquals(true, ShownControl.boolean(tracker.states.value[0x28]))
+        assertEquals(false, ConfirmedControl.boolean(tracker.states.value[0x28]))
+        now = 6000
+        tracker.receive(0x28, byteArrayOf(2))
+        assertEquals(false, ShownControl.boolean(tracker.states.value[0x28]))
+    }
+
+    @Test fun unsentWriteNeverShows() {
+        val tracker = CommandTracker({ 0 })
+        tracker.receive(0x0d, byteArrayOf(2))
+        val token = tracker.begin(0x0d, byteArrayOf(3))
+        tracker.sendFailed(0x0d, token)
+        assertEquals(2, ShownControl.listeningMode(tracker.states.value[0x0d]))
+        assertNull(ShownControl.boolean(null))
+    }
 }

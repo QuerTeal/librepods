@@ -534,9 +534,9 @@ fun AirPodsSettingsScreen(
                 ConnectionSettings(
                     automaticEarDetectionEnabled = state.automaticEarDetectionEnabled,
                     onAutomaticEarDetectionChanged = onAutomaticEarDetectionChanged,
-                    automaticConnectionEnabled = me.kavishdevar.librepods.bluetooth.ConfirmedControl.boolean(
-                        state.commandStates[AACPManager.Companion.ControlCommandIdentifiers.AUTOMATIC_CONNECTION_CONFIG.value]),
-                    automaticConnectionPhase = state.commandStates[AACPManager.Companion.ControlCommandIdentifiers.AUTOMATIC_CONNECTION_CONFIG.value]?.phase,
+                    automaticConnectionEnabled = state.automaticConnectionEnabled,
+                    automaticConnectionFailed = state.commandStates[AACPManager.Companion.ControlCommandIdentifiers.AUTOMATIC_CONNECTION_CONFIG.value]
+                        ?.let { it.phase == SettingPhase.FAILED && it.failure != "confirmation_timeout" } == true,
                     onAutomaticConnectionChanged = onAutomaticConnectionChanged
                 )
             }
