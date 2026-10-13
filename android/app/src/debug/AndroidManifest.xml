@@ -18,6 +18,8 @@
         android:targetPackage="me.kavishdevar.librepods" android:functionalTest="true" />
     <instrumentation android:name=".SettingsUiInstrumentation"
         android:targetPackage="me.kavishdevar.librepods" android:functionalTest="true" />
+    <instrumentation android:name=".EchoProbeInstrumentation"
+        android:targetPackage="me.kavishdevar.librepods" android:functionalTest="true" />
     <instrumentation android:name=".HandoffInstrumentation"
         android:targetPackage="me.kavishdevar.librepods" android:functionalTest="true" />
 </manifest>
