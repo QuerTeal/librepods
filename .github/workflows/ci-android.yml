@@ -45,6 +45,9 @@ jobs:
         run: echo "${{ secrets.RELEASE_KEYSTORE_FILE }}" | base64 --decode > android/release.keystore
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
+        with:
+          # The default also installs the removed 'tools' package, which fails with cmdline-tools 16.
+          packages: platform-tools
       - name: Accept Licenses
         run: yes | sdkmanager --licenses
       - name: Install NDK
@@ -58,6 +61,9 @@ jobs:
           RELEASE_KEY_ALIAS=${{ secrets.RELEASE_KEY_ALIAS }}
           RELEASE_KEY_PASSWORD=${{ secrets.RELEASE_KEY_PASSWORD }}
           EOF
+      - name: Run unit tests
+        run: ./gradlew testFossDebugUnitTest
+        working-directory: android
       - name: Build debug APK for PRs
         if: github.event_name == 'pull_request'
         run: ./gradlew assembleFossDebug
