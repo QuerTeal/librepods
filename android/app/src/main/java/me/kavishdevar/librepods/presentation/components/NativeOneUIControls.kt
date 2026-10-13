@@ -96,7 +96,7 @@ internal fun NativeOneUISwitch(checked: Boolean, enabled: Boolean, modifier: Mod
 }
 
 @Composable
-internal fun NativeOneUISeekBar(value: Float, range: ClosedFloatingPointRange<Float>, enabled: Boolean, label: String?, modifier: Modifier, onChange: (Float) -> Unit, snapPoints: List<Float> = emptyList(), snapThreshold: Float = 0.05f) {
+internal fun NativeOneUISeekBar(value: Float, range: ClosedFloatingPointRange<Float>, enabled: Boolean, label: String?, modifier: Modifier, onChange: (Float) -> Unit, snapPoints: List<Float> = emptyList(), snapThreshold: Float = defaultSnapThreshold(range)) {
     val callback by rememberUpdatedState(onChange)
     val latestValue by rememberUpdatedState(value)
     val haptics = LocalHapticFeedback.current

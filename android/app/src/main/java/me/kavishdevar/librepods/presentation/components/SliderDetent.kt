@@ -3,6 +3,9 @@ package me.kavishdevar.librepods.presentation.components
 
 import kotlin.math.abs
 
+/** Snap points catch within 2% of the slider's span, e.g. ±2 on 0..100 and ±0.04 on -1..1. */
+internal fun defaultSnapThreshold(range: ClosedFloatingPointRange<Float>) = (range.endInclusive - range.start) * 0.02f
+
 /** Holds a value near a reference point; a wider release band prevents repeated ticks. */
 internal class SliderDetent(points: List<Float>, private val threshold: Float) {
     private val points = points.filter { it.isFinite() }.distinct().sorted()

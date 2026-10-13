@@ -269,7 +269,7 @@ internal fun OneUISlider(
     modifier: Modifier = Modifier,
     label: String? = null,
     snapPoints: List<Float> = emptyList(),
-    snapThreshold: Float = 0.05f,
+    snapThreshold: Float = defaultSnapThreshold(valueRange),
 ) {
     NativeOneUISeekBar(value, valueRange, enabled, label, modifier, onValueChange, snapPoints, snapThreshold)
 }

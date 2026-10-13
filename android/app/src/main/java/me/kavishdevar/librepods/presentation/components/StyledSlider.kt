@@ -232,7 +232,7 @@ fun StyledSlider(
     valueRange: ClosedFloatingPointRange<Float>,
     backdrop: Backdrop = rememberLayerBackdrop(),
     snapPoints: List<Float> = emptyList(),
-    snapThreshold: Float = 0.05f,
+    snapThreshold: Float? = null,
     startIcon: String? = null,
     endIcon: String? = null,
     startLabel: String? = null,
@@ -243,6 +243,7 @@ fun StyledSlider(
     index: Int = 0,
     count: Int = 1
 ) {
+    val snapThreshold = snapThreshold ?: defaultSnapThreshold(valueRange)
     if (LocalOneUI.current) {
         OneUISliderBlock(label, value, onValueChange, valueRange, snapPoints, snapThreshold, startIcon, endIcon, startLabel, endLabel, description, enabled)
         return
