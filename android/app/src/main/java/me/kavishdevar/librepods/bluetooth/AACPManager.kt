@@ -21,6 +21,8 @@
 package me.kavishdevar.librepods.bluetooth
 
 import android.util.Log
+import android.os.Handler
+import android.os.Looper
 import android.os.SystemClock
 import me.kavishdevar.librepods.data.Capability
 import me.kavishdevar.librepods.data.CustomEq
@@ -310,9 +312,28 @@ class AACPManager {
         val token = commandTracker.begin(identifier, value)
         val controlPacket = createControlCommandPacket(identifier, value)
         val sent = sendDataPacket(controlPacket)
-        if (!sent) commandTracker.sendFailed(identifier, token)
+        if (sent) showDelivered(identifier, value) else commandTracker.sendFailed(identifier, token)
         return sent
     }
+
+    /**
+     * AirPods Pro 3 firmware applies most control writes without echoing them (verified by reconnect
+     * readback), so a delivered write is shown until the AirPods report otherwise. The tracker still
+     * marks it confirmed only on a real report. Ownership must always come from the AirPods.
+     */
+    private fun showDelivered(identifier: Byte, value: ByteArray) {
+        val id = ControlCommandIdentifiers.fromByte(identifier) ?: return
+        if (id == ControlCommandIdentifiers.OWNS_CONNECTION) return
+        val delivered = value.copyOf()
+        mainHandler.post {
+            getControlCommandStatus(id)?.let(controlCommandStatusList::remove)
+            controlCommandStatusList.add(ControlCommandStatus(id, delivered))
+            val command = ControlCommand(identifier, delivered)
+            controlCommandListeners[id]?.toList()?.forEach { it.onControlCommandReceived(command) }
+        }
+    }
+
+    private val mainHandler by lazy { Handler(Looper.getMainLooper()) }
 
     @OptIn(ExperimentalStdlibApi::class)
     fun sendControlCommand(identifier: Byte, value: Byte): Boolean {
@@ -1255,7 +1276,7 @@ class AACPManager {
         val token = commandTracker.begin(Opcodes.CUSTOM_EQ, byteArrayOf(customEq.state.toByte(),
             customEq.low.toByte(), customEq.mid.toByte(), customEq.high.toByte()))
         val sent = sendDataPacket(customEq.toPacket())
-        if (!sent) commandTracker.sendFailed(Opcodes.CUSTOM_EQ, token)
+        if (sent) this.customEq = customEq else commandTracker.sendFailed(Opcodes.CUSTOM_EQ, token)
         return sent
     }
 

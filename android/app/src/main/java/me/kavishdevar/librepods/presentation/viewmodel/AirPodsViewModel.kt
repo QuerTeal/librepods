@@ -324,17 +324,21 @@ class AirPodsViewModel(
         require(low in 0..100)
         require(mid in 0..100)
         require(high in 0..100)
-        val updatedEq = _uiState.value.customEq.copy(low = low, mid = mid, high = high)
-        if (isDemoMode) _uiState.update { it.copy(customEq = updatedEq) }
-        else if (uiState.value.featureAvailability[AirPodsFeature.CUSTOM_EQ]?.canUse == true)
-            sendToCurrentSession { service.aacpManager.sendCustomEqPacket(updatedEq) }
+        sendCustomEq(_uiState.value.customEq.copy(low = low, mid = mid, high = high))
     }
 
     fun setCustomEqEnabled(enabled: Boolean) {
-        val desired = _uiState.value.customEq.copy(state = if (enabled) 2 else 1)
+        sendCustomEq(_uiState.value.customEq.copy(state = if (enabled) 2 else 1))
+    }
+
+    /** AirPods report custom EQ on connect but don't echo writes, so a delivered write is shown right away. */
+    private fun sendCustomEq(desired: CustomEq) {
+        if (desired == _uiState.value.customEq) return
         if (isDemoMode) _uiState.update { it.copy(customEq = desired) }
         else if (uiState.value.featureAvailability[AirPodsFeature.CUSTOM_EQ]?.canUse == true)
-            sendToCurrentSession { service.aacpManager.sendCustomEqPacket(desired) }
+            sendToCurrentSession {
+                if (service.aacpManager.sendCustomEqPacket(desired)) _uiState.update { it.copy(customEq = desired) }
+            }
     }
 
     override fun onCleared() {

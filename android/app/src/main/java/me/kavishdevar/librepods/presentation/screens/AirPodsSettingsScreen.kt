@@ -292,13 +292,12 @@ fun AirPodsSettingsScreen(
                 }
             }
             item(key = "feature_status") {
-                // Raw gesture delivery is session setup and this firmware does not echo it.
-                // Keep its unconfirmed tracker result; do not label user settings as failed for
-                // that timeout. A failed socket write and every actual setting failure still show.
-                val phases = state.commandStates.filterNot { (id, result) ->
-                    id == AACPManager.Companion.ControlCommandIdentifiers.STEM_CONFIG.value &&
-                        result.phase == SettingPhase.FAILED && result.failure == "confirmation_timeout"
-                }.values.map { it.phase } + state.attStates.values.map { it.phase }
+                // This firmware applies most control writes without echoing them, so a missing echo
+                // is not a failure. Keep the unconfirmed tracker result; a failed socket write and
+                // every ATT failure still show.
+                val phases = state.commandStates.values.filterNot { result ->
+                    result.phase == SettingPhase.FAILED && result.failure == "confirmation_timeout"
+                }.map { it.phase } + state.attStates.values.map { it.phase }
                 val message = when {
                     SettingPhase.FAILED in phases -> R.string.setting_failed_notice
                     SettingPhase.PENDING in phases -> R.string.setting_pending_notice
