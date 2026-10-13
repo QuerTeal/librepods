@@ -1,5 +1,6 @@
 package me.kavishdevar.librepods
 
+import me.kavishdevar.librepods.presentation.components.ValueSlider
 import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Bundle
@@ -11,7 +12,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -48,7 +48,7 @@ class AudioMonitorActivity : ComponentActivity() {
                 Text(stringResource(R.string.monitor_note))
                 Text(stringResource(status), modifier = Modifier.padding(vertical = 16.dp))
                 Text(stringResource(R.string.monitor_gain))
-                Slider(value = gain, onValueChange = { gain = it; monitor.gain = it }, valueRange = 0f..1f)
+                ValueSlider(value = gain, onValueChange = { gain = it; monitor.gain = it }, valueRange = 0f..1f)
                 Button(onClick = {
                     if (requested) { monitor.stop(); requested = false; status = R.string.monitor_note }
                     else if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) startMonitoring()

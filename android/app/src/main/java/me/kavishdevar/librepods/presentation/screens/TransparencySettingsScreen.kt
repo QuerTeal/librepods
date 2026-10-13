@@ -19,6 +19,7 @@
 package me.kavishdevar.librepods.presentation.screens
 
 // import me.kavishdevar.librepods.utils.RadareOffsetFinder
+import me.kavishdevar.librepods.presentation.components.ValueSlider
 import androidx.compose.runtime.SideEffect
 import androidx.compose.material3.rememberSliderState
 import android.annotation.SuppressLint
@@ -431,7 +432,7 @@ private fun EqualizerBandsCard(values: FloatArray, onValueChange: (band: Int, va
                         label = stringResource(R.string.band_label, band + 1)
                     )
                 } else {
-                    Slider(
+                    ValueSlider(
                         value = value,
                         onValueChange = { onValueChange(band, it) },
                         valueRange = 0f..100f,

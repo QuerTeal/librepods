@@ -18,6 +18,9 @@
 
 package me.kavishdevar.librepods.presentation.components
 
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.runtime.SideEffect
+import androidx.compose.material3.SliderState
 import me.kavishdevar.librepods.presentation.theme.AppleMetrics
 import android.annotation.SuppressLint
 import android.content.res.Configuration
@@ -313,7 +316,7 @@ fun StyledSlider(
                                     Spacer(Modifier.width(12.dp))
                                 }
 
-                                Slider(
+                                ValueSlider(
                                     modifier = Modifier.weight(1f),
                                     value = value,
                                     onValueChange = { newValue ->
@@ -858,4 +861,22 @@ fun StyledSliderPreview() {
             }
         }
     }
+}
+
+/**
+ * material3 1.5 deprecates the value-based Slider; this keeps that call shape on top of a
+ * [SliderState] that follows [value].
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ValueSlider(
+    value: Float,
+    onValueChange: (Float) -> Unit,
+    modifier: Modifier = Modifier,
+    valueRange: ClosedFloatingPointRange<Float> = 0f..1f,
+    enabled: Boolean = true,
+) {
+    val state = remember(valueRange) { SliderState(value, 0, valueRange) }
+    SideEffect { if (state.value != value) state.value = value }
+    Slider(state = state, onValueChange = { state.value = it; onValueChange(it) }, modifier = modifier, enabled = enabled)
 }

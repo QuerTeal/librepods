@@ -1,5 +1,6 @@
 package me.kavishdevar.librepods.presentation.components
 
+import androidx.compose.material3.rememberBottomSheetState
 import me.kavishdevar.librepods.presentation.theme.AppleShape
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -10,7 +11,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.SheetValue
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
@@ -38,7 +38,7 @@ fun StyledBottomSheet(
 
     val isDarkTheme = isSystemInDarkTheme()
     val contentDensity = androidx.compose.ui.platform.LocalDensity.current
-    val sheetState = rememberModalBottomSheetState(false) // move this to parent composable
+    val sheetState = rememberBottomSheetState(SheetValue.Hidden) // move this to parent composable
 
     val isExpanded =  sheetState.targetValue == SheetValue.Expanded
 
