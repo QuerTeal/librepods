@@ -1,6 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 package me.kavishdevar.librepods.presentation.components
 
+import com.kyant.backdrop.shadow.Shadow
+import com.kyant.backdrop.highlight.Highlight
+import com.kyant.backdrop.effects.lens
+import com.kyant.backdrop.drawBackdrop
+import com.kyant.backdrop.backdrops.rememberLayerBackdrop
+import com.kyant.backdrop.backdrops.layerBackdrop
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
@@ -72,7 +78,8 @@ import kotlin.math.sin
  * - The selection pill slides between the modes when tapped or dragged.
  * - While Adaptive is selected, the side modes shrink to 20 % of the track and the middle 60 % becomes
  *   a darker track between a dotted (more ambient) and a solid (more reduction) ring. Dragging the
- *   Adaptive pill along it sets the adaptive strength; held, the pill widens and turns translucent.
+ *   Adaptive pill along it sets the adaptive strength continuously; choosing Adaptive starts at 50.
+ * - Held, the pill widens into Liquid Glass that refracts the track and icons beneath it.
  * - A mode that needs both buds in the ears isn't selected; the label row shows [wearGuidance]'s
  *   message for a moment instead.
  */
@@ -107,6 +114,8 @@ internal fun AppleListeningModeControl(
         } else if (target != latestMode) {
             haptics.performHapticFeedback(HapticFeedbackType.SegmentTick)
             onModeChange(target)
+            // Like iOS, Adaptive starts from the default strength each time it's chosen.
+            if (target == NoiseControlMode.ADAPTIVE) onAdaptiveStrengthChange?.invoke(ADAPTIVE_DEFAULT)
         }
     }
 
@@ -167,19 +176,37 @@ internal fun AppleListeningModeControl(
             val height = AppleMetrics.SegmentHeight
             val inset = AppleMetrics.SegmentInset
             val held = draggingStrength || dragX != null
-            val pillColor = when {
-                held -> if (dark) Color(0xFF636366).copy(alpha = 0.85f) else Color.White.copy(alpha = 0.72f)
+            val adaptivePillLight = selected == NoiseControlMode.ADAPTIVE && strengthEnabled && dark && !held
+            val glass by animateFloatAsState(if (held) 1f else 0f, spring(dampingRatio = 0.8f, stiffness = Spring.StiffnessMediumLow), label = "glass")
+            val trackBackdrop = rememberLayerBackdrop()
+            val restColor = when {
                 selected == NoiseControlMode.ADAPTIVE && strengthEnabled && dark -> Color(0xFFE0E0E0)
                 dark -> Color.Black
                 else -> Color.White
             }
-            val adaptivePillLight = selected == NoiseControlMode.ADAPTIVE && strengthEnabled && dark && !held
+            @Composable
+            fun ModeIcons(alpha: Float) {
+                modes.forEachIndexed { i, m ->
+                    val x = if (i == adaptiveIndex && selected == NoiseControlMode.ADAPTIVE && strengthEnabled) lerp(center(i), pillCenter, adaptiveLayout) else center(i)
+                    Box(
+                        Modifier
+                            .offset { androidx.compose.ui.unit.IntOffset((x - with(density) { 20.dp.toPx() }).roundToInt(), 0) }
+                            .size(40.dp, height),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            bitmap = ImageBitmap.imageResource(modeIcon(m)), contentDescription = null,
+                            tint = (if (i == adaptiveIndex && adaptivePillLight) Color.Black else iconTint).copy(alpha = alpha),
+                            modifier = Modifier.size(40.dp)
+                        )
+                    }
+                }
+            }
 
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(height)
-                    .background(trackColor, AppleShape(height / 2))
                     .pointerInput(modes, strengthEnabled) {
                         detectTapGestures { offset ->
                             val g = geo
@@ -187,23 +214,24 @@ internal fun AppleListeningModeControl(
                             val target = modes[i]
                             if (target == NoiseControlMode.ADAPTIVE && latestMode == NoiseControlMode.ADAPTIVE && strengthEnabled) {
                                 val f = ((offset.x - g.subLeft - g.restPill / 2) / (g.sub - g.restPill)).coerceIn(0f, 1f)
-                                setStrength?.invoke(adaptiveLevel(f))
+                                setStrength?.invoke((f * 100).roundToInt())
                             } else pick(target)
                         }
                     }
                     .pointerInput(modes, strengthEnabled) {
                         var lastSent = -1
+                        var lastSentAt = 0L
                         detectHorizontalDragGestures(
                             onDragStart = { offset ->
                                 val g = geo
                                 val onAdaptive = latestMode == NoiseControlMode.ADAPTIVE && strengthEnabled &&
                                     offset.x in g.subLeft..(g.subLeft + g.sub)
-                                if (onAdaptive) { draggingStrength = true; liveStrength = g.strength; lastSent = adaptiveLevel(g.strength) }
+                                if (onAdaptive) { draggingStrength = true; liveStrength = g.strength; lastSent = (g.strength * 100).roundToInt() }
                                 else dragX = offset.x.coerceIn(g.side / 2, size.width - g.side / 2)
                             },
                             onDragEnd = {
                                 if (draggingStrength) {
-                                    val value = adaptiveLevel(liveStrength ?: 0.5f)
+                                    val value = ((liveStrength ?: 0.5f) * 100).roundToInt()
                                     if (value != lastSent) setStrength?.invoke(value)
                                     draggingStrength = false
                                     liveStrength = null
@@ -220,17 +248,27 @@ internal fun AppleListeningModeControl(
                             val g = geo
                             if (draggingStrength) {
                                 val f = ((liveStrength ?: 0.5f) + delta / (g.sub - g.restPill)).coerceIn(0f, 1f)
-                                liveStrength = f
-                                // The AirPods follow the drag one level at a time, with a tick per level.
-                                val value = adaptiveLevel(f)
-                                if (value != lastSent) {
-                                    setStrength?.invoke(value); lastSent = value
-                                    haptics.performHapticFeedback(HapticFeedbackType.SegmentTick)
+                                // Continuous, with throttled live writes; a tick marks the default in the middle.
+                                val value = (f * 100).roundToInt()
+                                val previous = ((liveStrength ?: f) * 100).roundToInt()
+                                val now = System.currentTimeMillis()
+                                if (value != lastSent && now - lastSentAt > 120) {
+                                    setStrength?.invoke(value); lastSent = value; lastSentAt = now
                                 }
+                                if ((previous - ADAPTIVE_DEFAULT) * (value - ADAPTIVE_DEFAULT) <= 0 && previous != value)
+                                    haptics.performHapticFeedback(HapticFeedbackType.SegmentTick)
+                                liveStrength = f
                             } else dragX = ((dragX ?: 0f) + delta).coerceIn(g.side / 2, size.width - g.side / 2)
                         }
                     }
             ) {
+                Box(
+                    Modifier
+                        .layerBackdrop(trackBackdrop)
+                        .fillMaxWidth()
+                        .height(height)
+                        .background(trackColor, AppleShape(height / 2))
+                ) {
                 // Adaptive slider track and its end rings.
                 if (adaptiveLayout > 0.01f) {
                     Box(
@@ -244,7 +282,9 @@ internal fun AppleListeningModeControl(
                     Ring(x = subLeft + ringInset, dotted = true, color = ringColor.copy(alpha = adaptiveLayout), height = height)
                     Ring(x = subLeft + subWidth - ringInset, dotted = false, color = ringColor.copy(alpha = adaptiveLayout), height = height)
                 }
-                // Selection pill.
+                ModeIcons(alpha = 1f)
+                }
+                // Selection pill: solid at rest, Liquid Glass while held.
                 Box(
                     Modifier
                         // The held pill is wider; keep it inside the track at the ends.
@@ -252,32 +292,44 @@ internal fun AppleListeningModeControl(
                         .width(with(density) { pillWidth.toDp() })
                         .height(height)
                         .padding(inset)
-                        .background(pillColor, AppleShape(height / 2))
-                        .then(if (dark && !adaptivePillLight) Modifier.border(Dp.Hairline, Color.White.copy(alpha = 0.16f), AppleShape(height / 2))
-                            else if (held) Modifier.border(Dp.Hairline, Color.White.copy(alpha = 0.6f), AppleShape(height / 2)) else Modifier)
+                        .drawBackdrop(
+                            backdrop = trackBackdrop,
+                            shape = { AppleShape(height / 2) },
+                            highlight = { Highlight.Ambient.copy(alpha = glass) },
+                            shadow = { Shadow(radius = 6.dp, color = Color.Black.copy(alpha = 0.06f + 0.06f * glass)) },
+                            onDrawSurface = {
+                                drawRect(restColor.copy(alpha = 1f - glass))
+                                drawRect((if (dark) Color.White else Color.White).copy(alpha = if (dark) 0.08f * glass else 0.18f * glass))
+                            },
+                            effects = {
+                                // Gentle edge refraction: stronger values pull the icon into the rim.
+                                lens(
+                                    refractionHeight = 8.dp.toPx(),
+                                    refractionAmount = size.height * 0.3f,
+                                    depthEffect = true,
+                                    chromaticAberration = true
+                                )
+                            }
+                        )
+                        .then(if (dark && !adaptivePillLight && glass < 0.5f) Modifier.border(Dp.Hairline, Color.White.copy(alpha = 0.16f * (1f - glass)), AppleShape(height / 2)) else Modifier)
                 )
-                // Mode icons; Adaptive's rides on its pill while the slider shows.
+                // Icons over the solid pill at rest; held, the glass shows the refracted ones beneath.
+                ModeIcons(alpha = 1f - glass)
+                // Accessibility targets for each mode.
                 modes.forEachIndexed { i, m ->
-                    val x = if (i == adaptiveIndex && selected == NoiseControlMode.ADAPTIVE && strengthEnabled) lerp(center(i), pillCenter, adaptiveLayout) else center(i)
                     val label = stringResource(modeLabel(m))
                     Box(
                         Modifier
-                            .offset { androidx.compose.ui.unit.IntOffset((x - with(density) { 20.dp.toPx() }).roundToInt(), 0) }
-                            .size(40.dp, height)
+                            .offset { androidx.compose.ui.unit.IntOffset(lefts[i].roundToInt(), 0) }
+                            .width(with(density) { segWidth(i).toDp() })
+                            .height(height)
                             .semantics {
                                 role = Role.RadioButton
                                 this.selected = m == selected
                                 contentDescription = label
                                 onClick { pick(m); true }
-                            },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            bitmap = ImageBitmap.imageResource(modeIcon(m)), contentDescription = null,
-                            tint = if (i == adaptiveIndex && adaptivePillLight) Color.Black else iconTint,
-                            modifier = Modifier.size(40.dp)
-                        )
-                    }
+                            }
+                    )
                 }
             }
             // Labels under the modes, or the wear guidance in their place.
@@ -303,11 +355,7 @@ internal fun AppleListeningModeControl(
     }
 }
 
-/**
- * The firmware keeps only three adaptive strengths. Measured by writing a value and reading it back
- * after a reconnect: 0 -> 0, 25/60/70 -> 50, 75/80/90 -> 100 (nearest level, halves up).
- */
-internal fun adaptiveLevel(fraction: Float): Int = (kotlin.math.floor(fraction.coerceIn(0f, 1f) * 2 + 0.5f) * 50).toInt()
+private const val ADAPTIVE_DEFAULT = 50
 
 private class Geometry(
     val lefts: FloatArray, val side: Float, val sub: Float, val subLeft: Float, val restPill: Float, val strength: Float,

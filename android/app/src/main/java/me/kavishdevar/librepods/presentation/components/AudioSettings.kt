@@ -65,11 +65,11 @@ fun AudioSettings(
         if (loudSoundReductionCapability && vendorIdHook) StyledToggle(label = stringResource(R.string.loud_sound_reduction),
             description = stringResource(R.string.loud_sound_reduction_description),
             checked = loudSoundReductionChecked, onCheckedChange = onLoudSoundReductionCheckedChange, enabled = isPremium)
-        if (adaptiveAudioCapability || customEqCapability) {
+        // Adaptive Audio strength is set in the listening mode control, as on iOS 27.
+        if (customEqCapability) {
             Spacer(modifier = Modifier.height(12.dp))
             StyledList {
-                if (adaptiveAudioCapability) StyledListItem(name = stringResource(R.string.adaptive_audio), onClick = navigateToAdaptiveStrength)
-                if (customEqCapability) StyledListItem(name = stringResource(R.string.equalizer), onClick = navigateToEqualizer)
+                StyledListItem(name = stringResource(R.string.equalizer), onClick = navigateToEqualizer)
             }
         }
         return
