@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 package me.kavishdevar.librepods.presentation.components
 
+import androidx.compose.foundation.layout.requiredHeight
+import com.kyant.backdrop.effects.vibrancy
+import com.kyant.backdrop.effects.blur
 import com.kyant.backdrop.shadow.Shadow
 import com.kyant.backdrop.highlight.Highlight
 import com.kyant.backdrop.effects.lens
@@ -75,11 +78,12 @@ import kotlin.math.sin
 
 /**
  * The iOS 27 listening-mode control, from the user's iPadOS 27 recordings:
- * - The selection pill slides between the modes when tapped or dragged.
+ * - Tapping a mode slides the selection pill to it.
  * - While Adaptive is selected, the side modes shrink to 20 % of the track and the middle 60 % becomes
  *   a darker track between a dotted (more ambient) and a solid (more reduction) ring. Dragging the
  *   Adaptive pill along it sets the adaptive strength continuously; choosing Adaptive starts at 50.
- * - Held, the pill widens into Liquid Glass that refracts the track and icons beneath it.
+ * - Only the Adaptive pill can be dragged. Held, it lifts into Liquid Glass like iOS: about 1.3x wider,
+ *   5 pt proud of the track, frosted inside and refracting what lies under its rim.
  * - A mode that needs both buds in the ears isn't selected; the label row shows [wearGuidance]'s
  *   message for a moment instead.
  */
@@ -153,7 +157,6 @@ internal fun AppleListeningModeControl(
             val subLeft = lefts[adaptiveIndex]
             fun strengthCenter(fraction: Float) = subLeft + restPillWidth / 2 + fraction * (subWidth - restPillWidth)
 
-            var dragX by remember { mutableStateOf<Float?>(null) }
             var draggingStrength by remember { mutableStateOf(false) }
             var liveStrength by remember { mutableStateOf<Float?>(null) }
             val strengthFraction = (liveStrength ?: (adaptiveStrength ?: 50) / 100f).coerceIn(0f, 1f)
@@ -162,23 +165,26 @@ internal fun AppleListeningModeControl(
             // Gesture handlers outlive recompositions; they read the current geometry from here.
             val geo by rememberUpdatedState(Geometry(lefts.copyOf(), sideWidth, subWidth, subLeft, restPillWidth, strengthFraction))
             val targetCenter = when {
-                dragX != null -> dragX!!
                 selected == NoiseControlMode.ADAPTIVE && strengthEnabled -> lerp(center(adaptiveIndex), strengthCenter(strengthFraction), adaptiveLayout)
                 else -> center(selectedIndex)
             }
             val restWidth = if (selected == NoiseControlMode.ADAPTIVE) lerp(segWidth(selectedIndex), restPillWidth, adaptiveLayout) else segWidth(selectedIndex)
             val pillCenter by animateFloatAsState(targetCenter,
-                if (dragX != null || draggingStrength) spring(stiffness = Spring.StiffnessHigh) else spring(dampingRatio = 0.75f, stiffness = Spring.StiffnessMediumLow),
+                if (draggingStrength) spring(stiffness = Spring.StiffnessHigh) else spring(dampingRatio = 0.75f, stiffness = Spring.StiffnessMediumLow),
                 label = "pillCenter")
-            val pillWidth by animateFloatAsState(if (draggingStrength || dragX != null) restWidth * 1.25f else restWidth,
+            val pillWidth by animateFloatAsState(if (draggingStrength) restWidth * 1.3f else restWidth,
                 spring(dampingRatio = 0.7f, stiffness = Spring.StiffnessMedium), label = "pillWidth")
 
             val height = AppleMetrics.SegmentHeight
             val inset = AppleMetrics.SegmentInset
-            val held = draggingStrength || dragX != null
-            val adaptivePillLight = selected == NoiseControlMode.ADAPTIVE && strengthEnabled && dark && !held
-            val glass by animateFloatAsState(if (held) 1f else 0f, spring(dampingRatio = 0.8f, stiffness = Spring.StiffnessMediumLow), label = "glass")
+            val held = draggingStrength
+            val adaptivePillLight = selected == NoiseControlMode.ADAPTIVE && strengthEnabled && dark
+            // The spring may overshoot; sizes and paddings need 0..1.
+            val glassAnim by animateFloatAsState(if (held) 1f else 0f, spring(dampingRatio = 0.8f, stiffness = Spring.StiffnessMediumLow), label = "glass")
+            val glass = glassAnim.coerceIn(0f, 1f)
             val trackBackdrop = rememberLayerBackdrop()
+            val pageColor = MaterialTheme.colorScheme.surfaceContainer
+            val frost = if (dark) Color(0xFF5A5A5C) else Color(0xFFECECF1)
             val restColor = when {
                 selected == NoiseControlMode.ADAPTIVE && strengthEnabled && dark -> Color(0xFFE0E0E0)
                 dark -> Color.Black
@@ -226,8 +232,8 @@ internal fun AppleListeningModeControl(
                                 val g = geo
                                 val onAdaptive = latestMode == NoiseControlMode.ADAPTIVE && strengthEnabled &&
                                     offset.x in g.subLeft..(g.subLeft + g.sub)
+                                // Only the Adaptive strength slides; modes change by tapping.
                                 if (onAdaptive) { draggingStrength = true; liveStrength = g.strength; lastSent = (g.strength * 100).roundToInt() }
-                                else dragX = offset.x.coerceIn(g.side / 2, size.width - g.side / 2)
                             },
                             onDragEnd = {
                                 if (draggingStrength) {
@@ -235,15 +241,11 @@ internal fun AppleListeningModeControl(
                                     if (value != lastSent) setStrength?.invoke(value)
                                     draggingStrength = false
                                     liveStrength = null
-                                } else dragX?.let { x ->
-                                    val g = geo
-                                    val i = (0 until n).minByOrNull { abs(g.lefts[it] + g.width(it, adaptiveIndex) / 2 - x) } ?: 0
-                                    dragX = null
-                                    pick(modes[i])
                                 }
                             },
-                            onDragCancel = { draggingStrength = false; liveStrength = null; dragX = null }
+                            onDragCancel = { draggingStrength = false; liveStrength = null }
                         ) { change, delta ->
+                            if (!draggingStrength) return@detectHorizontalDragGestures
                             change.consume()
                             val g = geo
                             if (draggingStrength) {
@@ -258,15 +260,18 @@ internal fun AppleListeningModeControl(
                                 if ((previous - ADAPTIVE_DEFAULT) * (value - ADAPTIVE_DEFAULT) <= 0 && previous != value)
                                     haptics.performHapticFeedback(HapticFeedbackType.SegmentTick)
                                 liveStrength = f
-                            } else dragX = ((dragX ?: 0f) + delta).coerceIn(g.side / 2, size.width - g.side / 2)
+                            }
                         }
                     }
             ) {
                 Box(
                     Modifier
-                        .layerBackdrop(trackBackdrop)
+                        // Taller than the track (centered on it) so the lifted rim has real pixels to bend.
+                        .requiredHeight(height + GlassLift * 2)
                         .fillMaxWidth()
-                        .height(height)
+                        .layerBackdrop(trackBackdrop)
+                        .background(pageColor)
+                        .padding(vertical = GlassLift)
                         .background(trackColor, AppleShape(height / 2))
                 ) {
                 // Adaptive slider track and its end rings.
@@ -284,37 +289,45 @@ internal fun AppleListeningModeControl(
                 }
                 ModeIcons(alpha = 1f)
                 }
-                // Selection pill: solid at rest, Liquid Glass while held.
+                // Selection pill: solid at rest; held, lifted frosted Liquid Glass bending its rim.
+                val lift = with(density) { (GlassLift * glass).toPx() }
+                // Stays a capsule as it lifts: the corner radius follows the current height.
+                val pillShape = AppleShape(height / 2 + GlassLift * glass)
                 Box(
                     Modifier
                         // The held pill is wider; keep it inside the track at the ends.
                         .offset { androidx.compose.ui.unit.IntOffset((pillCenter - pillWidth / 2).coerceIn(0f, width - pillWidth).roundToInt(), 0) }
                         .width(with(density) { pillWidth.toDp() })
-                        .height(height)
-                        .padding(inset)
+                        .requiredHeight(height + with(density) { (lift * 2).toDp() })
+                        .padding(inset * (1f - glass))
                         .drawBackdrop(
                             backdrop = trackBackdrop,
-                            shape = { AppleShape(height / 2) },
+                            shape = { pillShape },
                             highlight = { Highlight.Ambient.copy(alpha = glass) },
-                            shadow = { Shadow(radius = 6.dp, color = Color.Black.copy(alpha = 0.06f + 0.06f * glass)) },
+                            shadow = { Shadow(radius = 4.dp + 8.dp * glass, color = Color.Black.copy(alpha = 0.06f + 0.10f * glass)) },
                             onDrawSurface = {
                                 drawRect(restColor.copy(alpha = 1f - glass))
-                                drawRect((if (dark) Color.White else Color.White).copy(alpha = if (dark) 0.08f * glass else 0.18f * glass))
+                                drawRect(frost.copy(alpha = 0.82f * glass))
                             },
                             effects = {
-                                // Gentle edge refraction: stronger values pull the icon into the rim.
+                                vibrancy()
+                                blur(2.dp.toPx())
+                                // Rim refraction: the frosted middle stays calm, the edge bends what's under it.
                                 lens(
-                                    refractionHeight = 8.dp.toPx(),
-                                    refractionAmount = size.height * 0.3f,
+                                    refractionHeight = 12.dp.toPx(),
+                                    refractionAmount = size.height * 0.45f,
                                     depthEffect = true,
                                     chromaticAberration = true
                                 )
                             }
                         )
-                        .then(if (dark && !adaptivePillLight && glass < 0.5f) Modifier.border(Dp.Hairline, Color.White.copy(alpha = 0.16f * (1f - glass)), AppleShape(height / 2)) else Modifier)
+                        .border(Dp.Hairline,
+                            if (glass > 0.01f) Color.White.copy(alpha = (if (dark) 0.35f else 0.9f) * glass)
+                            else if (dark && !adaptivePillLight) Color.White.copy(alpha = 0.16f) else Color.Transparent,
+                            pillShape)
                 )
-                // Icons over the solid pill at rest; held, the glass shows the refracted ones beneath.
-                ModeIcons(alpha = 1f - glass)
+                // Icons stay crisp on top of the pill, held or not, as on iOS.
+                ModeIcons(alpha = 1f)
                 // Accessibility targets for each mode.
                 modes.forEachIndexed { i, m ->
                     val label = stringResource(modeLabel(m))
@@ -356,6 +369,9 @@ internal fun AppleListeningModeControl(
 }
 
 private const val ADAPTIVE_DEFAULT = 50
+
+/** How far the held glass pill rises above and below the track (measured ~5 pt on iPadOS 27). */
+private val GlassLift = 5.dp
 
 private class Geometry(
     val lefts: FloatArray, val side: Float, val sub: Float, val subLeft: Float, val restPill: Float, val strength: Float,
