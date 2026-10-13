@@ -11,7 +11,7 @@ navigationCompose = "2.10.2"
 constraintlayout = "2.2.2"
 haze = "2.0.1"
 dynamicanimation = "1.1.0"
-aboutLibraries = "14.2.0"
+aboutLibraries = "15.2.0"
 materialIconsCore = "1.7.8"
 backdrop = "2.0.1"
 # The version backdrop itself uses; LibrePods draws iOS continuous corners with it.
@@ -47,7 +47,7 @@ androidx-dynamicanimation = { group = "androidx.dynamicanimation", name = "dynam
 androidx-compose-foundation-layout = { group = "androidx.compose.foundation", name = "foundation-layout"}
 androidx-compose-ui-tooling = { group = "androidx.compose.ui", name = "ui-tooling" }
 androidx-compose-ui = { group = "androidx.compose.ui", name = "ui" }
-aboutlibraries = { group = "com.mikepenz", name = "aboutlibraries", version.ref = "aboutLibraries" }
+aboutlibraries = { group = "com.mikepenz", name = "aboutlibraries-core", version.ref = "aboutLibraries" }
 aboutlibraries-compose-m3 = { group = "com.mikepenz", name = "aboutlibraries-compose-m3", version.ref = "aboutLibraries" }
 androidx-compose-material-icons-core = { group = "androidx.compose.material", name = "material-icons-core", version.ref = "materialIconsCore" }
 backdrop = { group = "io.github.kyant0", name = "backdrop", version.ref = "backdrop" }
