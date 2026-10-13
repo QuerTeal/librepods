@@ -24,7 +24,7 @@ play = "2.0.2"
 nav3Core = "1.2.0"
 lifecycleViewmodelNav3 = "2.11.0"
 navevent = "1.2.0"
-m3 = "1.5.0-alpha21"
+m3 = "1.5.0-beta01"
 foundationLayout = "1.12.1"
 uiTextGoogleFonts = "1.12.1"
 

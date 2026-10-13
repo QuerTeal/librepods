@@ -194,8 +194,7 @@ fun NoiseControlSettings(
                                     options.lastIndex -> ButtonGroupDefaults.connectedTrailingButtonShapes()
                                     else -> ButtonGroupDefaults.connectedMiddleButtonShapes()
                                 },
-                                colors = ToggleButtonDefaults.toggleButtonColors()
-                                    .copy(containerColor = MaterialTheme.colorScheme.surface),
+                                colors = ToggleButtonDefaults.colors(containerColor = MaterialTheme.colorScheme.surface),
                                 modifier = Modifier.fillMaxWidth()
                             ) {
                                 Icon(

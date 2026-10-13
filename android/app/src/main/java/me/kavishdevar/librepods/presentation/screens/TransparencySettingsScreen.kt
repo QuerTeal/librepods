@@ -19,6 +19,8 @@
 package me.kavishdevar.librepods.presentation.screens
 
 // import me.kavishdevar.librepods.utils.RadareOffsetFinder
+import androidx.compose.runtime.SideEffect
+import androidx.compose.material3.rememberSliderState
 import android.annotation.SuppressLint
 import android.util.Log
 import androidx.compose.foundation.background
@@ -310,15 +312,17 @@ fun TransparencySettingsScreen(viewModel: AirPodsViewModel) {
                                 modifier = Modifier.padding(bottom = 4.dp)
                             )
 
+                            val sliderState = rememberSliderState(eqValue.floatValue, 0, 0f..100f)
+                            SideEffect { if (sliderState.value != eqValue.floatValue) sliderState.value = eqValue.floatValue }
                             Slider(
-                                value = eqValue.floatValue,
+                                state = sliderState,
                                 onValueChange = { newVal -> userEdited.value = true;
+                                    sliderState.value = newVal
                                     eqValue.floatValue = newVal
                                     val newEQ = eq.value.copyOf()
                                     newEQ[i] = eqValue.floatValue
                                     eq.value = newEQ
                                 },
-                                valueRange = 0f..100f,
                                 modifier = Modifier
                                     .fillMaxWidth(0.9f)
                                     .height(36.dp),

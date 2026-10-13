@@ -18,6 +18,8 @@
 
 package me.kavishdevar.librepods.presentation.components
 
+import androidx.compose.runtime.SideEffect
+import androidx.compose.material3.rememberSliderState
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
@@ -288,11 +290,13 @@ private fun VolumePill(
         dragCallback(dragging)
         onDispose { if (dragging) dragCallback(false) }
     }
+    // material3 1.5 draws a custom track only through SliderState. It keeps the drag position;
+    // volume changed elsewhere (hardware keys) moves it while the user isn't dragging.
+    val sliderState = rememberSliderState(value, steps.coerceAtLeast(0), 0f..1f)
+    SideEffect { if (!dragging && sliderState.value != value) sliderState.value = value }
     Slider(
-        value = value,
-        onValueChange = onFractionChange,
-        valueRange = 0f..1f,
-        steps = steps.coerceAtLeast(0),
+        state = sliderState,
+        onValueChange = { sliderState.value = it; onFractionChange(it) },
         interactionSource = interaction,
         modifier = Modifier
             .fillMaxWidth()
