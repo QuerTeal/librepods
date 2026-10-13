@@ -103,6 +103,9 @@
     <string name="monitor_connecting">Checking microphone and AirPods output…</string>
     <string name="monitor_failed">Stopped: microphone access, audio focus or the selected Bluetooth route is unavailable.</string>
     <string name="feature_reason_phone_permission_required">Phone permissions are required for call gestures. Tap to request them.</string>
+    <string name="audio_and_routing">Audio &amp; Routing</string>
+    <string name="controls_and_gestures">Controls &amp; Gestures</string>
+    <string name="airpods_volume">Volume</string>
 </resources>
  
 

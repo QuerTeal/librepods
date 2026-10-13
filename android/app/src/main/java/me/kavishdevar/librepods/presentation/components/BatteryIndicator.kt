@@ -19,6 +19,9 @@
 package me.kavishdevar.librepods.presentation.components
 
 
+import me.kavishdevar.librepods.presentation.theme.LocalDesignSystem
+import me.kavishdevar.librepods.presentation.theme.DesignSystem
+import me.kavishdevar.librepods.presentation.theme.AppleColors
 import android.content.res.Configuration
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
@@ -70,7 +73,9 @@ fun BatteryIndicator(
     previousCharging: Boolean = false,
 ) {
     val isDarkTheme = isSystemInDarkTheme()
-    val batteryTextColor = MaterialTheme.colorScheme.onSurface
+    // iOS 27: a 35 pt ring with a 3 pt stroke, and a 17 pt gray percentage 10 pt below it.
+    val apple = LocalDesignSystem.current == DesignSystem.Apple
+    val batteryTextColor = if (apple) AppleColors.secondaryLabel() else MaterialTheme.colorScheme.onSurface
     val batteryFillColor = colorResource(R.color.battery_level)
 
     val initialScale = if (previousCharging) 1f else 0f
@@ -87,16 +92,16 @@ fun BatteryIndicator(
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Box(
-            modifier = Modifier.padding(bottom = 4.dp), contentAlignment = Alignment.Center
+            modifier = Modifier.padding(bottom = if (apple) 10.dp else 4.dp), contentAlignment = Alignment.Center
         ) {
-            val strokeWidthPx = with(LocalDensity.current) { 4.dp.toPx() }
+            val strokeWidthPx = with(LocalDensity.current) { (if (apple) 3.dp else 4.dp).toPx() }
             val gapFromCenterPx = with(LocalDensity.current) { 8.sp.toPx() }
 
             val trackColor = if (isDarkTheme) Color(0xFF272728) else Color(0xFFE3E3E8)
             val optimizedLimit = 0.8f
             val progress = batteryPercentage / 100f
 
-            Canvas(modifier = Modifier.size(34.dp)) {
+            Canvas(modifier = Modifier.size(if (apple) 35.dp else 34.dp)) {
                 val startAngle = -90f
                 val stroke = Stroke(width = strokeWidthPx, cap = StrokeCap.Round)
                 val inset = strokeWidthPx / 2
@@ -190,7 +195,7 @@ fun BatteryIndicator(
             text = "$prefix $batteryPercentage%",
             color = batteryTextColor,
             style = TextStyle(
-                fontSize = 14.sp,
+                fontSize = if (apple) 17.sp else 14.sp,
                 fontFamily = sfProFamily,
                 textAlign = TextAlign.Center
             ),

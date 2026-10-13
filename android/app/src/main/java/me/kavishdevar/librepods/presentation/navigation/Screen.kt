@@ -83,8 +83,22 @@ sealed interface Screen: NavKey {
     @Serializable
     data object MicrophoneSettings: Screen
 
+    /** An iOS 27 AirPods sub-page in the Apple design; see [AirPodsSection]. */
+    @Serializable
+    data class AirPodsSection(
+        val section: String
+    ): Screen
+
     @Serializable
     data object ReleaseNotes: Screen {
         override val showTopBar: Boolean = false
     }
+}
+
+/** Sub-pages of the Apple design's AirPods page, as in iOS 27 Settings. */
+object AirPodsSection {
+    const val AUDIO = "audio"
+    const val CONTROLS = "controls"
+    const val HEARING = "hearing"
+    const val BATTERY = "battery"
 }

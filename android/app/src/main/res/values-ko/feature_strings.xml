@@ -102,5 +102,8 @@
     <string name="monitor_connecting">마이크·AirPods 출력 경로 확인 중…</string>
     <string name="monitor_failed">마이크 접근·오디오 포커스·선택한 Bluetooth 경로를 사용할 수 없어 중단했습니다.</string>
     <string name="feature_reason_phone_permission_required">통화 제스처에는 전화 권한이 필요합니다. 눌러 권한을 요청하세요.</string>
+    <string name="audio_and_routing">오디오 및 라우팅</string>
+    <string name="controls_and_gestures">제어 항목 및 제스처</string>
+    <string name="airpods_volume">음량</string>
 </resources>
 

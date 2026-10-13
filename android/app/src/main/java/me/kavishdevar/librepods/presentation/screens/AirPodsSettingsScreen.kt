@@ -21,6 +21,14 @@
 package me.kavishdevar.librepods.presentation.screens
 
 // import me.kavishdevar.librepods.utils.RadareOffsetFinder
+import me.kavishdevar.librepods.presentation.navigation.AirPodsSection
+import me.kavishdevar.librepods.presentation.theme.AppleColors
+import me.kavishdevar.librepods.presentation.components.StyledList
+import me.kavishdevar.librepods.presentation.components.AppleGlyphs
+import me.kavishdevar.librepods.presentation.components.AppleIconTile
+import me.kavishdevar.librepods.presentation.components.AppleVolumeSlider
+import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.lazy.LazyItemScope
 import android.annotation.SuppressLint
 import android.content.Context.MODE_PRIVATE
 import android.content.Intent
@@ -153,7 +161,9 @@ fun AirPodsSettingsRoute(
     navigateToTroubleshooting: () -> Unit,
     navigateToCallControlScreen: (action: String) -> Unit,
     navigateToMicrophoneSettings: () -> Unit,
-    navigateToFeatureStatus: () -> Unit = {}
+    navigateToFeatureStatus: () -> Unit = {},
+    section: String? = null,
+    navigateToSection: (String) -> Unit = {}
 ) {
     val state by viewModel.uiState.collectAsState()
 
@@ -200,6 +210,8 @@ fun AirPodsSettingsRoute(
             navigateToCallControlScreen = navigateToCallControlScreen,
             navigateToMicrophoneSettings = navigateToMicrophoneSettings,
             navigateToFeatureStatus = navigateToFeatureStatus,
+            section = section,
+            navigateToSection = navigateToSection,
 
             activateDemoMode = viewModel::activateDemoMode,
             reconnectFromSavedMac = viewModel::reconnectFromSavedMac
@@ -246,6 +258,8 @@ fun AirPodsSettingsScreen(
         activateDemoMode: () -> Unit,
         reconnectFromSavedMac: () -> Unit,
         navigateToFeatureStatus: () -> Unit = {},
+        section: String? = null,
+        navigateToSection: (String) -> Unit = {},
 ) {
     val sharedPreferences = LocalContext.current.getSharedPreferences("settings", MODE_PRIVATE)
     var deviceName by remember {
@@ -276,13 +290,40 @@ fun AirPodsSettingsScreen(
         val capabilities = state.capabilities
         val features = state.featureAvailability
 
+        // iOS 27 splits the AirPods page: the main page keeps the overview and links to sub-pages
+        // that reuse these same entries. The other designs keep everything on one page.
+        val appleLayout = LocalDesignSystem.current == DesignSystem.Apple
+        fun shows(key: String): Boolean {
+            // A spacer is keyed by a shortened name of the entry it precedes.
+            val k = key.removePrefix("spacer_").let { short ->
+                mapOf("noise" to "noise_control", "call" to "call_control", "sleep" to "sleep_detection",
+                    "disconnect" to "disconnect_button")[short] ?: short
+            }
+            if (k == "top_padding" || k == "bottom_padding") return true
+            if (!appleLayout) return !k.startsWith("apple_")
+            return k in when (section) {
+                null -> setOf("handoff_status", "play_update_banner", "battery", "name", "noise_control",
+                    "apple_volume", "apple_nav", "upgrade_button", "about", "disconnect_button")
+                AirPodsSection.AUDIO -> setOf("audio", "connection", "microphone", "sleep_detection",
+                    "case_tones", "case_tone_volume", "off_listening")
+                AirPodsSection.CONTROLS -> setOf("press_hold", "call_control", "head_tracking")
+                AirPodsSection.HEARING -> setOf("hearing_health")
+                AirPodsSection.BATTERY -> setOf("dynamic_end_of_charge")
+                else -> emptySet()
+            }
+        }
+        fun LazyListScope.entry(key: String, content: @Composable LazyItemScope.() -> Unit) {
+            if (shows(key)) item(key = key, content = content)
+        }
+        val sectionGap = if (appleLayout) 28.dp else 16.dp
+
         LazyColumn(
             modifier = Modifier
                 .background(MaterialTheme.colorScheme.surfaceContainer)
                 .padding(horizontal = 16.dp)
         ) {
-            item(key = "top_padding") { Spacer(modifier = Modifier.height(topPadding)) }
-            item(key = "handoff_status") {
+            entry("top_padding") { Spacer(modifier = Modifier.height(topPadding)) }
+            entry("handoff_status") {
                 if (state.automaticReconnectPaused) {
                     StyledListItem(name = stringResource(R.string.handoff_paused_title),
                         description = stringResource(R.string.handoff_paused_description),
@@ -291,7 +332,7 @@ fun AirPodsSettingsScreen(
                         height = 120.dp)
                 }
             }
-            item(key = "feature_status") {
+            entry("feature_status") {
                 // This firmware applies most control writes without echoing them, so a missing echo
                 // is not a failure. Keep the unconfirmed tracker result; a failed socket write and
                 // every ATT failure still show.
@@ -309,7 +350,7 @@ fun AirPodsSettingsScreen(
                     height = 96.dp)
                 Spacer(Modifier.height(16.dp))
             }
-            item(key = "play_update_banner") {
+            entry("play_update_banner") {
                 if (state.timeUntilFOSSPremiumExpiry > 0L) {
                     val context = LocalContext.current
                     Box(
@@ -347,7 +388,7 @@ fun AirPodsSettingsScreen(
                 }
             }
 
-            item(key = "battery") {
+            entry("battery") {
                 BatteryView(
                     batteryList = state.battery,
                     budsRes = state.instance?.model?.budsRes ?: R.drawable.airpods_pro_3_buds,
@@ -356,11 +397,11 @@ fun AirPodsSettingsScreen(
                     rightBudsRes = state.instance?.model?.rightBudsRes ?: R.drawable.airpods_pro_3_right
                 )
             }
-            item(key = "spacer_battery") {
+            entry("spacer_battery") {
                 Spacer(modifier = Modifier.height(32.dp))
             }
 
-            item(key = "name") {
+            entry("name") {
                 StyledListItem(
                     name = stringResource(R.string.name),
                     description = deviceName.text,
@@ -375,11 +416,11 @@ fun AirPodsSettingsScreen(
 
             if (hasHearingAidCapability || hasPPECapability) {
                 if (hasPPECapability || state.vendorIdHook) {
-                    item(key = "spacer_hearing_health") {
+                    entry("spacer_hearing_health") {
                         Spacer(modifier = Modifier.height(24.dp))
                     }
                 }
-                item(key = "hearing_health") {
+                entry("hearing_health") {
                     HearingHealthSettings(
                         hasPPECapability = hasPPECapability,
                         hasHearingAidCapability = hasHearingAidCapability,
@@ -391,10 +432,10 @@ fun AirPodsSettingsScreen(
             }
 
             if (capabilities.contains(Capability.LISTENING_MODE)) {
-                item(key = "spacer_noise") {
-                    Spacer(modifier = Modifier.height(16.dp))
+                entry("spacer_noise") {
+                    Spacer(modifier = Modifier.height(sectionGap))
                 }
-                item(key = "noise_control") {
+                entry("noise_control") {
                     NoiseControlSettings(
                         showOffListeningMode = state.offListeningMode,
                         noiseControlModeValue = state.controlStates[AACPManager.Companion.ControlCommandIdentifiers.LISTENING_MODE]?.getOrNull(
@@ -409,11 +450,44 @@ fun AirPodsSettingsScreen(
                 }
             }
 
-            if (capabilities.contains(Capability.STEM_CONFIG)) {
-                item(key = "spacer_press_hold") {
-                    Spacer(modifier = Modifier.height(16.dp))
+            entry("apple_volume") {
+                Spacer(modifier = Modifier.height(24.dp))
+                AppleVolumeSlider()
+            }
+            entry("apple_nav") {
+                val hasHearing = features[AirPodsFeature.HEARING_AID]?.canUse == true ||
+                    state.instance?.model?.capabilities?.contains(Capability.PPE) == true
+                Spacer(modifier = Modifier.height(36.dp))
+                StyledList {
+                    StyledListItem(name = stringResource(R.string.audio_and_routing),
+                        onClick = { navigateToSection(AirPodsSection.AUDIO) },
+                        leadingContent = { AppleIconTile(AppleGlyphs.SPEAKER, AppleColors.audioTile) })
+                    if (hasHearing) StyledListItem(name = stringResource(R.string.hearing_health),
+                        onClick = { navigateToSection(AirPodsSection.HEARING) },
+                        leadingContent = { AppleIconTile(AppleGlyphs.EAR, AppleColors.hearingTile) })
+                    StyledListItem(name = stringResource(R.string.controls_and_gestures),
+                        onClick = { navigateToSection(AirPodsSection.CONTROLS) },
+                        leadingContent = { AppleIconTile(AppleGlyphs.GESTURE, AppleColors.controlsTile) })
+                    StyledListItem(name = stringResource(R.string.accessibility),
+                        onClick = navigateToAccessibility,
+                        leadingContent = { AppleIconTile(AppleGlyphs.ACCESSIBILITY, AppleColors.accessibilityTile) })
                 }
-                item(key = "press_hold") {
+                Spacer(modifier = Modifier.height(sectionGap))
+                StyledList {
+                    StyledListItem(name = stringResource(R.string.battery),
+                        onClick = { navigateToSection(AirPodsSection.BATTERY) },
+                        leadingContent = { AppleIconTile(AppleGlyphs.BATTERY, AppleColors.batteryTile) })
+                    StyledListItem(name = stringResource(R.string.feature_status_title),
+                        onClick = navigateToFeatureStatus,
+                        leadingContent = { AppleIconTile(AppleGlyphs.STATUS, AppleColors.statusTile) })
+                }
+            }
+
+            if (capabilities.contains(Capability.STEM_CONFIG)) {
+                entry("spacer_press_hold") {
+                    Spacer(modifier = Modifier.height(sectionGap))
+                }
+                entry("press_hold") {
                     PressAndHoldSettings(
                         leftAction = state.leftAction,
                         rightAction = state.rightAction,
@@ -423,10 +497,10 @@ fun AirPodsSettingsScreen(
                 }
             }
 
-            item(key = "spacer_call") {
-                Spacer(modifier = Modifier.height(16.dp))
+            entry("spacer_call") {
+                Spacer(modifier = Modifier.height(sectionGap))
             }
-            item(key = "call_control") {
+            entry("call_control") {
                 val bytes =
                     state.controlStates[AACPManager.Companion.ControlCommandIdentifiers.CALL_MANAGEMENT_CONFIG]?.take(
                         2
@@ -443,8 +517,8 @@ fun AirPodsSettingsScreen(
             }
 
 //                if (capabilities.contains(Capability.STEM_CONFIG) && !BuildConfig.PLAY_BUILD) {
-//                    item(key = "spacer_camera") { Spacer(modifier = Modifier.height(16.dp)) }
-//                    item(key = "camera_control") {
+//                    entry("spacer_camera") { Spacer(modifier = Modifier.height(sectionGap)) }
+//                    entry("camera_control") {
 //                        StyledListItem(
 //                            to = "camera_control",
 //                            name = stringResource(R.string.camera_remote),
@@ -455,7 +529,7 @@ fun AirPodsSettingsScreen(
 //                    }
 //                }
 
-            item(key = "upgrade_button") {
+            entry("upgrade_button") {
                 if (!state.isPremium) {
                     Spacer(modifier = Modifier.height(28.dp))
                     StyledButton(
@@ -475,8 +549,8 @@ fun AirPodsSettingsScreen(
                 }
             }
 
-            item(key = "spacer_audio") { Spacer(modifier = Modifier.height(16.dp)) }
-            item(key = "audio") {
+            entry("spacer_audio") { Spacer(modifier = Modifier.height(sectionGap)) }
+            entry("audio") {
                 val adaptiveVolumeCapability =
                     features[AirPodsFeature.PERSONALIZED_VOLUME]?.canUse == true
                 val conversationalAwarenessCapability =
@@ -529,8 +603,8 @@ fun AirPodsSettingsScreen(
                 )
             }
 
-            item(key = "spacer_connection") { Spacer(modifier = Modifier.height(16.dp)) }
-            item(key = "connection") {
+            entry("spacer_connection") { Spacer(modifier = Modifier.height(sectionGap)) }
+            entry("connection") {
                 ConnectionSettings(
                     automaticEarDetectionEnabled = state.automaticEarDetectionEnabled,
                     onAutomaticEarDetectionChanged = onAutomaticEarDetectionChanged,
@@ -541,8 +615,8 @@ fun AirPodsSettingsScreen(
                 )
             }
 
-            item(key = "spacer_microphone") { Spacer(modifier = Modifier.height(16.dp)) }
-            item(key = "microphone") {
+            entry("spacer_microphone") { Spacer(modifier = Modifier.height(sectionGap)) }
+            entry("microphone") {
                 val id = AACPManager.Companion.ControlCommandIdentifiers.MIC_MODE
 
                 val selectedModeText = when (state.controlStates[id]?.getOrNull(0) ?: 0x00.toByte()) {
@@ -560,8 +634,8 @@ fun AirPodsSettingsScreen(
             }
 
             if (capabilities.contains(Capability.SLEEP_DETECTION)) {
-                item(key = "spacer_sleep") { Spacer(modifier = Modifier.height(16.dp)) }
-                item(key = "sleep_detection") {
+                entry("spacer_sleep") { Spacer(modifier = Modifier.height(sectionGap)) }
+                entry("sleep_detection") {
                     val id = AACPManager.Companion.ControlCommandIdentifiers.SLEEP_DETECTION_CONFIG
                     StyledToggle(
                         label = stringResource(R.string.sleep_detection),
@@ -573,8 +647,8 @@ fun AirPodsSettingsScreen(
             }
 
             if (capabilities.contains(Capability.HEAD_GESTURES)) {
-                item(key = "spacer_head_tracking") { Spacer(modifier = Modifier.height(16.dp)) }
-                item(key = "head_tracking") {
+                entry("spacer_head_tracking") { Spacer(modifier = Modifier.height(sectionGap)) }
+                entry("head_tracking") {
                     StyledListItem(
                         name = stringResource(R.string.head_gestures),
                         description = if (sharedPreferences.getBoolean(
@@ -586,8 +660,8 @@ fun AirPodsSettingsScreen(
                 }
             }
 
-            item(key = "spacer_dynamic_end_of_charge") { Spacer(modifier = Modifier.height(16.dp)) }
-            item(key = "dynamic_end_of_charge") {
+            entry("spacer_dynamic_end_of_charge") { Spacer(modifier = Modifier.height(sectionGap)) }
+            entry("dynamic_end_of_charge") {
                 StyledToggle(
                     label = stringResource(R.string.optimized_charging),
                     description = stringResource(R.string.optimized_charging_description),
@@ -598,8 +672,8 @@ fun AirPodsSettingsScreen(
             }
 
             if (features[AirPodsFeature.CASE_TONES]?.canUse == true) {
-                item(key = "spacer_case_tones") { Spacer(Modifier.height(16.dp)) }
-                item(key = "case_tones") {
+                entry("spacer_case_tones") { Spacer(Modifier.height(16.dp)) }
+                entry("case_tones") {
                     val id = AACPManager.Companion.ControlCommandIdentifiers.IN_CASE_TONE_CONFIG
                     StyledToggle(label = stringResource(R.string.case_tones_title),
                         description = stringResource(R.string.case_tones_note),
@@ -611,7 +685,7 @@ fun AirPodsSettingsScreen(
             val caseVolumeId = AACPManager.Companion.ControlCommandIdentifiers.IN_CASE_TONE_VOLUME
             val caseVolume = state.controlStates[caseVolumeId]?.firstOrNull()?.toInt()?.and(0xff)
             if (caseVolume in 0..100) {
-                item(key = "case_tone_volume") {
+                entry("case_tone_volume") {
                     var draft by remember(caseVolume) { androidx.compose.runtime.mutableFloatStateOf(caseVolume!!.toFloat()) }
                     me.kavishdevar.librepods.presentation.components.StyledSlider(
                         label = stringResource(R.string.case_tone_volume), value = draft,
@@ -620,16 +694,16 @@ fun AirPodsSettingsScreen(
                 }
             }
 
-            item(key = "spacer_accessibility") { Spacer(modifier = Modifier.height(16.dp)) }
-            item(key = "accessibility") {
+            entry("spacer_accessibility") { Spacer(modifier = Modifier.height(sectionGap)) }
+            entry("accessibility") {
                 StyledListItem(
                     name = stringResource(R.string.accessibility), onClick = navigateToAccessibility
                 )
             }
 
             if (capabilities.contains(Capability.LOUD_SOUND_REDUCTION)) {
-                item(key = "spacer_off_listening") { Spacer(modifier = Modifier.height(16.dp)) }
-                item(key = "off_listening") {
+                entry("spacer_off_listening") { Spacer(modifier = Modifier.height(sectionGap)) }
+                entry("off_listening") {
                     val id = AACPManager.Companion.ControlCommandIdentifiers.ALLOW_OFF_OPTION
                     StyledToggle(
                         label = stringResource(R.string.off_listening_mode),
@@ -640,8 +714,8 @@ fun AirPodsSettingsScreen(
                 }
             }
 
-            item(key = "spacer_about") { Spacer(modifier = Modifier.height(32.dp)) }
-            item(key = "about") {
+            entry("spacer_about") { Spacer(modifier = Modifier.height(32.dp)) }
+            entry("about") {
                 AboutCard(
                     modelName = state.modelName,
                     actualModel = state.actualModel,
@@ -651,8 +725,8 @@ fun AirPodsSettingsScreen(
                 )
             }
 
-            item(key = "spacer_disconnect") { Spacer(modifier = Modifier.height(28.dp)) }
-            item(key = "disconnect_button") {
+            entry("spacer_disconnect") { Spacer(modifier = Modifier.height(28.dp)) }
+            entry("disconnect_button") {
                 StyledButton(
                     onClick = disconnect,
                     backdrop = rememberLayerBackdrop(),
@@ -670,10 +744,10 @@ fun AirPodsSettingsScreen(
                 }
             }
 
-//                item(key = "spacer_debug") { Spacer(modifier = Modifier.height(16.dp)) }
-//                item(key = "debug") { StyledListItem("debug", "Debug", navController) }
+//                entry("spacer_debug") { Spacer(modifier = Modifier.height(sectionGap)) }
+//                entry("debug") { StyledListItem("debug", "Debug", navController) }
 
-            item(key = "bottom_padding") { Spacer(modifier = Modifier.height(bottomPadding)) }
+            entry("bottom_padding") { Spacer(modifier = Modifier.height(bottomPadding)) }
         }
     } else {
         val backdrop = rememberLayerBackdrop()

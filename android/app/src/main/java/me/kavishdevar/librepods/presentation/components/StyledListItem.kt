@@ -77,6 +77,8 @@ import kotlinx.coroutines.launch
 import me.kavishdevar.librepods.R
 import me.kavishdevar.librepods.presentation.theme.AppleUnevenShape
 import me.kavishdevar.librepods.presentation.theme.AppleShape
+import me.kavishdevar.librepods.presentation.theme.AppleColors
+import me.kavishdevar.librepods.presentation.theme.AppleMetrics
 import me.kavishdevar.librepods.presentation.theme.DesignSystem
 import me.kavishdevar.librepods.presentation.theme.LocalDesignSystem
 import me.kavishdevar.librepods.presentation.theme.sectionHeader
@@ -108,15 +110,18 @@ fun StyledListItem(
     val m3eEnabled = LocalDesignSystem.current == DesignSystem.Material
     Column {
         title?.let {
+            if (!m3eEnabled) {
+                AppleSectionHeader(it)
+                return@let
+            }
             Box(
                 modifier = Modifier
-                    .background(if (m3eEnabled) Color.Transparent else MaterialTheme.colorScheme.surfaceContainer)
                     .padding(horizontal = 16.dp)
-                    .padding(top = 4.dp, bottom = if (m3eEnabled) 8.dp else 4.dp)
+                    .padding(top = 4.dp, bottom = 8.dp)
             ) {
                 Text(
                     text = it,
-                    color = if (m3eEnabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.sectionHeader,
+                    color = MaterialTheme.colorScheme.primary,
                     style = MaterialTheme.typography.labelSmallEmphasized
                 )
             }
@@ -127,9 +132,9 @@ fun StyledListItem(
                 .heightIn(min = 48.dp)
                 .background(
                     if (m3eEnabled) Color.Transparent else MaterialTheme.colorScheme.surface,
-                    if (m3eEnabled) RoundedCornerShape(16.dp) else AppleShape(28.dp)
+                    if (m3eEnabled) RoundedCornerShape(16.dp) else AppleShape(AppleMetrics.CardRadius)
                 )
-                .clip(if (m3eEnabled) RoundedCornerShape(16.dp) else AppleShape(28.dp))
+                .clip(if (m3eEnabled) RoundedCornerShape(16.dp) else AppleShape(AppleMetrics.CardRadius))
         ) {
             StyledListItemContent(
                 name = name,
@@ -246,6 +251,8 @@ private fun StyledListItemContent(
 
     when (LocalDesignSystem.current) {
         DesignSystem.Apple -> {
+            // iOS 27 rows are 52 pt; screens that pass their own height keep it.
+            val rowHeight = if (height == 58.dp) AppleMetrics.RowHeight else height
             val trailingContentDefault: @Composable () -> Unit = {
                 if (trailingContent == null) {
                     if (onClick != null) {
@@ -269,7 +276,7 @@ private fun StyledListItemContent(
                             Text(
                                 text = "􀯻",
                                 style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurface.copy(0.6f),
+                                color = AppleColors.secondaryLabel(),
                                 modifier = Modifier
                                     .padding(start = if (description != null) 6.dp else 0.dp)
                             )
@@ -285,12 +292,12 @@ private fun StyledListItemContent(
                         animatedBackgroundColor,
                         when {
                             (index == 0 && count == 1) -> {
-                                AppleShape(28.dp)
+                                AppleShape(AppleMetrics.CardRadius)
                             }
 
                             (index == 0) -> {
-                                AppleUnevenShape(topStart = 28.dp,
-                                    topEnd = 28.dp,
+                                AppleUnevenShape(topStart = AppleMetrics.CardRadius,
+                                    topEnd = AppleMetrics.CardRadius,
                                     bottomStart = 0.dp,
                                     bottomEnd = 0.dp
                                 )
@@ -299,8 +306,8 @@ private fun StyledListItemContent(
                             (index + 1 == count) -> {
                                 AppleUnevenShape(topStart = 0.dp,
                                     topEnd = 0.dp,
-                                    bottomStart = 28.dp,
-                                    bottomEnd = 28.dp
+                                    bottomStart = AppleMetrics.CardRadius,
+                                    bottomEnd = AppleMetrics.CardRadius
                                 )
                             }
 
@@ -347,18 +354,18 @@ private fun StyledListItemContent(
                             }
                         )
                     }
-                    .heightIn(min = height)
-                    .padding(horizontal = 16.dp)
+                    .heightIn(min = rowHeight)
+                    .padding(start = if (leadingContent != null) AppleMetrics.IconRowInset else AppleMetrics.ContentInset, end = AppleMetrics.ContentInset)
             ) {
                 Row(
                     modifier = Modifier
-                        .heightIn(min = height)
+                        .heightIn(min = rowHeight)
                         .padding(vertical = if (orientation == ListItemOrientation.Vertical) 12.dp else 0.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     if (leadingContent != null) {
                         leadingContent()
-                        Spacer(modifier = Modifier.width(12.dp))
+                        Spacer(modifier = Modifier.width(AppleMetrics.IconTextGap))
                     }
                     Column (
                         modifier = if (orientation == ListItemOrientation.Vertical) Modifier.weight(1f) else Modifier,
@@ -385,18 +392,19 @@ private fun StyledListItemContent(
                         Text(
                             text = description,
                             style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurface.copy(if (isDarkTheme) 0.6f else 0.8f) // TODO: move to color scheme
+                            color = AppleColors.secondaryLabel()
                         )
                     }
 
                     trailingContentDefault()
                 }
                 if (index+1 != count) {
+                    // iOS separators are a hairline that starts at the row text.
                     HorizontalDivider(
-                        thickness = 1.dp,
-                        color = Color(0x40888888),
+                        thickness = Dp.Hairline,
+                        color = AppleColors.separator(),
                         modifier = Modifier
-                            .padding(start = if (leadingContent != null) 12.dp else 0.dp)
+                            .padding(start = if (leadingContent != null) AppleMetrics.IconTile + AppleMetrics.IconTextGap else 0.dp)
                     )
                 }
             }

@@ -26,6 +26,9 @@ import me.kavishdevar.librepods.presentation.theme.LibrePodsTheme
 import me.kavishdevar.librepods.presentation.theme.LocalDesignSystem
 import me.kavishdevar.librepods.presentation.theme.sectionHeader
 import me.kavishdevar.librepods.presentation.theme.LocalOneUI
+import me.kavishdevar.librepods.presentation.theme.AppleColors
+import me.kavishdevar.librepods.presentation.theme.AppleMetrics
+import me.kavishdevar.librepods.presentation.theme.AppleText
 
 @Composable
 fun StyledList(
@@ -52,24 +55,27 @@ fun StyledList(
 
     Column (modifier = modifier) {
         title?.let {
+            if (!m3eEnabled) {
+                AppleSectionHeader(it)
+                return@let
+            }
             Box(
                 modifier = Modifier
-                    .background(if (m3eEnabled) Color.Transparent else MaterialTheme.colorScheme.surfaceContainer)
                     .padding(horizontal = 16.dp)
-                    .padding(top = 4.dp, bottom = if (m3eEnabled) 12.dp else 4.dp)
+                    .padding(top = 4.dp, bottom = 12.dp)
             ) {
                 Text(
                     text = it,
-                    color = if (m3eEnabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.sectionHeader,
-                    style = if (m3eEnabled) MaterialTheme.typography.labelSmallEmphasized else MaterialTheme.typography.bodySmall
+                    color = MaterialTheme.colorScheme.primary,
+                    style = MaterialTheme.typography.labelSmallEmphasized
                 )
             }
         }
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(if (m3eEnabled) Color.Transparent else MaterialTheme.colorScheme.surface, if (m3eEnabled) RoundedCornerShape(24.dp) else AppleShape(20.dp))
-                .clip(if (m3eEnabled) RoundedCornerShape(24.dp) else AppleShape(20.dp))
+                .background(if (m3eEnabled) Color.Transparent else MaterialTheme.colorScheme.surface, if (m3eEnabled) RoundedCornerShape(24.dp) else AppleShape(AppleMetrics.CardRadius))
+                .clip(if (m3eEnabled) RoundedCornerShape(24.dp) else AppleShape(AppleMetrics.CardRadius))
         ) {
             if (m3eEnabled && description != null) {
                 Text(
@@ -86,16 +92,33 @@ fun StyledList(
             Spacer(modifier = Modifier.height(if(m3eEnabled) 4.dp else 0.dp))
         }
     }
-    if (!m3eEnabled && description != null) {
-        Spacer(modifier = Modifier.height(8.dp))
-        Text(
-            text = description,
-            style = MaterialTheme.typography.bodySmallEmphasized,
-            color = MaterialTheme.colorScheme.onBackground.copy(0.6f),
-            modifier = Modifier.padding(horizontal = 16.dp)
-        )
-        Spacer(modifier = Modifier.height(4.dp))
-    }
+    if (!m3eEnabled && description != null) AppleFooter(description)
+}
+
+/** iOS 27 grouped-list header: 17 pt semibold gray, aligned with the row text. */
+@Composable
+internal fun AppleSectionHeader(text: String, modifier: Modifier = Modifier) {
+    Text(
+        text = text,
+        color = AppleColors.secondaryLabel(),
+        style = AppleText.sectionHeader,
+        modifier = modifier
+            .padding(horizontal = AppleMetrics.ContentInset)
+            .padding(top = 4.dp, bottom = AppleMetrics.HeaderGap)
+    )
+}
+
+/** iOS 27 grouped-list footer: 13 pt gray under the card. */
+@Composable
+internal fun AppleFooter(text: String, modifier: Modifier = Modifier) {
+    Text(
+        text = text,
+        color = AppleColors.secondaryLabel(),
+        style = AppleText.footer,
+        modifier = modifier
+            .padding(horizontal = AppleMetrics.ContentInset)
+            .padding(top = AppleMetrics.FooterGap, bottom = 4.dp)
+    )
 }
 
 /** A section title in the active look, for sections that aren't a [StyledList]. */
@@ -106,9 +129,13 @@ fun StyledSectionHeader(text: String, modifier: Modifier = Modifier) {
         return
     }
     val m3eEnabled = LocalDesignSystem.current == DesignSystem.Material
+    if (!m3eEnabled) {
+        AppleSectionHeader(text, modifier)
+        return
+    }
     Text(
         text = text,
-        color = if (m3eEnabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.sectionHeader,
+        color = MaterialTheme.colorScheme.primary,
         style = MaterialTheme.typography.labelSmallEmphasized,
         modifier = modifier
             .padding(horizontal = 16.dp)

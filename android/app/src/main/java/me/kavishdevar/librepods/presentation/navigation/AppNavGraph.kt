@@ -72,6 +72,39 @@ fun AppNavGraph(
     val m3eEnabled = LocalDesignSystem.current == DesignSystem.Material
     val apple = LocalDesignSystem.current == DesignSystem.Apple
 
+    @Composable
+    fun AirPodsPage(section: String?) {
+        if (!airPodsViewModel.isReady) LoadingScreen()
+        AirPodsSettingsRoute(
+            viewModel = airPodsViewModel,
+            navigateToRename = { navigate(Screen.Rename) },
+            navigateToHearingProtection = { navigate(Screen.HearingProtection) },
+            navigateToHearingAid = { navigate(Screen.HearingAid) },
+            navigateToLeftLongPress = {
+                navigate(
+                    Screen.LongPress("Left")
+                )
+            },
+            navigateToRightLongPress = {
+                navigate(
+                    Screen.LongPress("Right")
+                )
+            },
+            navigateToPurchase = { navigate(Screen.Purchase) },
+            navigateToAdaptiveStrength = { navigate(Screen.AdaptiveStrength) },
+            navigateToEqualizer = { navigate(Screen.Equalizer) },
+            navigateToHeadTracking = { navigate(Screen.HeadTracking) },
+            navigateToAccessibility = { navigate(Screen.Accessibility) },
+            navigateToVersion = { navigate(Screen.VersionInfo) },
+            navigateToTroubleshooting = { navigate(Screen.Troubleshooting) },
+            navigateToFeatureStatus = { navigate(Screen.FeatureStatus) },
+            navigateToCallControlScreen = { navigate(Screen.CallControl(it)) },
+            navigateToMicrophoneSettings = { navigate(Screen.MicrophoneSettings) },
+            section = section,
+            navigateToSection = { navigate(Screen.AirPodsSection(it)) },
+        )
+    }
+
     SharedTransitionLayout {
         NavDisplay(
             modifier = Modifier.fillMaxSize(),
@@ -93,35 +126,10 @@ fun AppNavGraph(
                             }
                         }
                     Screen.AirPodsSettings ->
-                        NavEntry(screen) {
-                            if (!airPodsViewModel.isReady) LoadingScreen()
-                            AirPodsSettingsRoute(
-                                viewModel = airPodsViewModel,
-                                navigateToRename = { navigate(Screen.Rename) },
-                                navigateToHearingProtection = { navigate(Screen.HearingProtection) },
-                                navigateToHearingAid = { navigate(Screen.HearingAid) },
-                                navigateToLeftLongPress = {
-                                    navigate(
-                                        Screen.LongPress("Left")
-                                    )
-                                },
-                                navigateToRightLongPress = {
-                                    navigate(
-                                        Screen.LongPress("Right")
-                                    )
-                                },
-                                navigateToPurchase = { navigate(Screen.Purchase) },
-                                navigateToAdaptiveStrength = { navigate(Screen.AdaptiveStrength) },
-                                navigateToEqualizer = { navigate(Screen.Equalizer) },
-                                navigateToHeadTracking = { navigate(Screen.HeadTracking) },
-                                navigateToAccessibility = { navigate(Screen.Accessibility) },
-                                navigateToVersion = { navigate(Screen.VersionInfo) },
-                                navigateToTroubleshooting = { navigate(Screen.Troubleshooting) },
-                                navigateToFeatureStatus = { navigate(Screen.FeatureStatus) },
-                                navigateToCallControlScreen = { navigate(Screen.CallControl(it)) },
-                                navigateToMicrophoneSettings = { navigate(Screen.MicrophoneSettings) },
-                            )
-                        }
+                        NavEntry(screen) { AirPodsPage(null) }
+
+                    is Screen.AirPodsSection ->
+                        NavEntry(screen) { AirPodsPage(screen.section) }
 
                     Screen.Rename ->
                         NavEntry(screen) {

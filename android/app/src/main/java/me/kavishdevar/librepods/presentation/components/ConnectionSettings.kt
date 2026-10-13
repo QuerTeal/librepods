@@ -20,6 +20,8 @@
 
 package me.kavishdevar.librepods.presentation.components
 
+import me.kavishdevar.librepods.presentation.theme.LocalDesignSystem
+import me.kavishdevar.librepods.presentation.theme.DesignSystem
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.res.stringResource
 import me.kavishdevar.librepods.R
@@ -33,6 +35,17 @@ fun ConnectionSettings(
     automaticConnectionFailed: Boolean = false,
     onAutomaticConnectionChanged: (Boolean) -> Unit,
 ) {
+    if (LocalDesignSystem.current == DesignSystem.Apple) {
+        // iOS 27 shows each switch as its own card with a footer.
+        StyledToggle(label = stringResource(R.string.ear_detection),
+            description = stringResource(R.string.local_ear_detection_description),
+            checked = automaticEarDetectionEnabled, onCheckedChange = onAutomaticEarDetectionChanged)
+        StyledToggle(label = stringResource(R.string.automatically_connect),
+            description = stringResource(if (automaticConnectionFailed) R.string.setting_failed_notice
+                else R.string.automatically_connect_description),
+            checked = automaticConnectionEnabled, onCheckedChange = onAutomaticConnectionChanged)
+        return
+    }
     StyledList {
         StyledToggle(
             label = stringResource(R.string.ear_detection),

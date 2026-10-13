@@ -86,6 +86,12 @@ fun NavigationRoot(
         Screen.VersionInfo -> stringResource(R.string.version)
         is Screen.CallControl -> currentScreen.action
         Screen.MicrophoneSettings -> stringResource(R.string.microphone_mode)
+        is Screen.AirPodsSection -> stringResource(when (currentScreen.section) {
+            AirPodsSection.AUDIO -> R.string.audio_and_routing
+            AirPodsSection.CONTROLS -> R.string.controls_and_gestures
+            AirPodsSection.HEARING -> R.string.hearing_health
+            else -> R.string.battery
+        })
         Screen.ReleaseNotes -> ""
     }
 

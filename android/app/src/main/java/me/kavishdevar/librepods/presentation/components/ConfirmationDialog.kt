@@ -18,6 +18,8 @@
 
 package me.kavishdevar.librepods.presentation.components
 
+import androidx.compose.foundation.layout.widthIn
+import me.kavishdevar.librepods.presentation.theme.AppleColors
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -112,91 +114,60 @@ fun ConfirmationDialog(
         return
     }
     if (!showDialog.value) return
-    val dialogSurface = MaterialTheme.colorScheme.surface.copy(alpha = 0.94f)
-    val dialogDensity = LocalDensity.current
-    Dialog(onDismissRequest = onDismiss,
-        properties = DialogProperties(dismissOnBackPress = true,
-            dismissOnClickOutside = false, usePlatformDefaultWidth = false)) {
-        CompositionLocalProvider(LocalDensity provides dialogDensity) {
-            Box(
-                modifier = Modifier.fillMaxSize(),
-                contentAlignment = Alignment.Center
+    AppleAlert(onDismiss, title, message, listOf(
+        AppleAlertButton(confirmText, onConfirm, primary = true),
+        AppleAlertButton(dismissText, onDismiss)
+    ))
+}
+
+internal data class AppleAlertButton(val text: String, val onClick: () -> Unit,
+    val primary: Boolean = false, val destructive: Boolean = false)
+
+/**
+ * The iOS 27 alert, measured from iPadOS 27 Settings: a ~320 pt card, left-aligned title and
+ * message, and full-width 48 pt pill buttons stacked 9 pt apart with the primary action first.
+ */
+@Composable
+internal fun AppleAlert(onDismiss: () -> Unit, title: String, message: String, buttons: List<AppleAlertButton>) {
+    val dark = isSystemInDarkTheme()
+    val card = if (dark) Color(0xFF2C2C2E) else Color(0xFFE8E7ED)
+    val secondary = if (dark) Color(0xFF3A3A3C) else Color(0xFFC8C8CD)
+    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(dismissOnBackPress = true,
+        dismissOnClickOutside = false, usePlatformDefaultWidth = false)) {
+        Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.2f)), contentAlignment = Alignment.Center) {
+            Column(
+                modifier = Modifier
+                    .padding(horizontal = 24.dp)
+                    .widthIn(max = 320.dp)
+                    .background(card, AppleShape(34.dp))
+                    .padding(horizontal = 18.dp)
+                    .padding(top = 22.dp, bottom = 18.dp)
+                    .verticalScroll(rememberScrollState())
             ) {
-                val innerBackdrop = rememberLayerBackdrop()
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(Color.Black.copy(alpha = 0.2f))
-                        .clickable(enabled = false, onClick = {}),
-                    contentAlignment = Alignment.Center
-                ) {
+                Text(title, style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+                    color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.padding(horizontal = 6.dp))
+                Spacer(Modifier.height(4.dp))
+                Text(message, style = MaterialTheme.typography.bodyMedium.copy(fontSize = 15.sp, lineHeight = 20.sp),
+                    color = AppleColors.secondaryLabel(), modifier = Modifier.padding(horizontal = 6.dp))
+                Spacer(Modifier.height(18.dp))
+                buttons.forEachIndexed { index, button ->
+                    if (index > 0) Spacer(Modifier.height(9.dp))
                     Box(
                         modifier = Modifier
-                            .requiredWidthIn(min = 200.dp, max = 360.dp)
-                            .clip(AppleShape(48.dp))
-                            .drawBackdrop(
-                                backdrop = backdrop,
-                                exportedBackdrop = innerBackdrop,
-                                shape = { AppleShape(48.dp) },
-                                effects = {
-                                    vibrancy()
-                                    blur(4f.dp.toPx())
-                                    lens(12f.dp.toPx(), 48f.dp.toPx(), true)
-                                },
-                                onDrawSurface = {
-                                    drawRect(dialogSurface)
-                                })
+                            .fillMaxWidth()
+                            .height(48.dp)
+                            .clip(AppleShape(24.dp))
+                            .background(if (button.primary && !button.destructive) MaterialTheme.colorScheme.primary else secondary)
+                            .clickable(onClick = button.onClick),
+                        contentAlignment = Alignment.Center
                     ) {
-                        Column(Modifier.verticalScroll(rememberScrollState()),
-                            horizontalAlignment = Alignment.CenterHorizontally) {
-                            Spacer(modifier = Modifier.height(24.dp))
-                            Text(
-                                title,
-                                color = MaterialTheme.colorScheme.onSurface,
-                                style = MaterialTheme.typography.bodyLarge,
-                                textAlign = TextAlign.Center,
-                                modifier = Modifier.padding(horizontal = 16.dp)
-                            )
-                            Spacer(modifier = Modifier.height(12.dp))
-                            Text(
-                                message,
-                                color = MaterialTheme.colorScheme.onSurface,
-                                style = MaterialTheme.typography.bodyMedium,
-                                textAlign = TextAlign.Center,
-                                modifier = Modifier.padding(horizontal = 16.dp)
-                            )
-                            Spacer(modifier = Modifier.height(16.dp))
-                            Row(
-                                modifier = Modifier.fillMaxWidth(0.9f),
-                                horizontalArrangement = Arrangement.spacedBy(24.dp)
-                            ) {
-                                StyledButton(
-                                    onClick = onDismiss,
-                                    backdrop = innerBackdrop,
-                                    modifier = Modifier.weight(1f),
-                                    materialButtonStyle = MaterialButtonStyle.Outlined,
-                                ) {
-                                    Text(
-                                        text = dismissText,
-                                        style = MaterialTheme.typography.bodyMedium
-                                    )
-                                }
-                                StyledButton(
-                                    onClick = onConfirm,
-                                    backdrop = innerBackdrop,
-                                    modifier = Modifier.weight(1f),
-                                    materialButtonStyle = MaterialButtonStyle.Filled,
-                                    surfaceColor = MaterialTheme.colorScheme.primary
-                                ) {
-                                    Text(
-                                        text = confirmText,
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = MaterialTheme.colorScheme.onPrimary
-                                    )
-                                }
-                            }
-                            Spacer(modifier = Modifier.height(24.dp))
-                        }
+                        Text(button.text, style = MaterialTheme.typography.bodyMedium.copy(
+                            fontWeight = if (button.primary) FontWeight.SemiBold else FontWeight.Medium),
+                            color = when {
+                                button.destructive -> MaterialTheme.colorScheme.error
+                                button.primary -> Color.White
+                                else -> MaterialTheme.colorScheme.onSurface
+                            })
                     }
                 }
             }
@@ -229,6 +200,11 @@ fun StyledAlertDialog(
                 OneUIDialogButton(confirmText, onConfirm, color = confirmColor)
             )
         )
+    } else if (LocalDesignSystem.current == DesignSystem.Apple) {
+        AppleAlert(onDismissRequest, title, text, listOf(
+            AppleAlertButton(confirmText, onConfirm, primary = true, destructive = destructive),
+            AppleAlertButton(dismissText, onDismissRequest)
+        ))
     } else {
         AlertDialog(
             onDismissRequest = onDismissRequest,

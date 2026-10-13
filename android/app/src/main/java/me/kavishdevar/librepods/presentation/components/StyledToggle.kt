@@ -20,6 +20,9 @@
 
 package me.kavishdevar.librepods.presentation.components
 
+import androidx.compose.ui.unit.Dp
+import me.kavishdevar.librepods.presentation.theme.AppleMetrics
+import me.kavishdevar.librepods.presentation.theme.AppleColors
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.selection.toggleable
@@ -107,15 +110,18 @@ fun StyledToggle(
     val m3eEnabled = LocalDesignSystem.current == DesignSystem.Material
     Column(modifier = Modifier.padding(vertical = 12.dp)) {
         title?.let {
+            if (!m3eEnabled) {
+                AppleSectionHeader(it)
+                return@let
+            }
             Box(
                 modifier = Modifier
-                    .background(if (m3eEnabled) Color.Transparent else MaterialTheme.colorScheme.surfaceContainer)
                     .padding(horizontal = 16.dp)
-                    .padding(top = 4.dp, bottom = if (m3eEnabled) 12.dp else 4.dp)
+                    .padding(top = 4.dp, bottom = 12.dp)
             ) {
                 Text(
                     text = it,
-                    color = if (m3eEnabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.sectionHeader,
+                    color = MaterialTheme.colorScheme.primary,
                     style = MaterialTheme.typography.labelSmallEmphasized
                 )
             }
@@ -125,9 +131,9 @@ fun StyledToggle(
                 .fillMaxWidth()
                 .background(
                     if (m3eEnabled) if (header) MaterialTheme.colorScheme.primaryContainer else Color.Transparent else MaterialTheme.colorScheme.surface,
-                    if (m3eEnabled) RoundedCornerShape(if (header) 64.dp else 16.dp) else AppleShape(28.dp)
+                    if (m3eEnabled) RoundedCornerShape(if (header) 64.dp else 16.dp) else AppleShape(AppleMetrics.CardRadius)
                 )
-                .clip(if (m3eEnabled) RoundedCornerShape(if (header) 64.dp else 16.dp) else AppleShape(28.dp))
+                .clip(if (m3eEnabled) RoundedCornerShape(if (header) 64.dp else 16.dp) else AppleShape(AppleMetrics.CardRadius))
         ) {
             if (m3eEnabled) {
                 StyledToggleContent(
@@ -151,16 +157,7 @@ fun StyledToggle(
                 )
             }
         }
-        if (description != null && !m3eEnabled) {
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                text = description, style = TextStyle(
-                    fontSize = 12.sp,
-                    color = MaterialTheme.colorScheme.onBackground.copy(0.6f),
-                    fontFamily = sfProFamily,
-                ), modifier = Modifier.padding(horizontal = 16.dp)
-            )
-        }
+        if (description != null && !m3eEnabled) AppleFooter(description)
     }
 }
 
@@ -317,11 +314,12 @@ private fun StyledToggleContent(
                 modifier = Modifier
                     .fillMaxWidth()
                     .background(
-                        shape = AppleShape(28.dp),
+                        shape = AppleShape(AppleMetrics.CardRadius),
                         color = if (enabled && isPressed.value)
                             MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f) else Color.Transparent
                     )
-                    .padding(16.dp)
+                    .heightIn(min = AppleMetrics.RowHeight)
+                    .padding(horizontal = AppleMetrics.ContentInset, vertical = 10.dp)
                     .pointerInput(enabled) {
                         detectTapGestures(
                             onPress = {
@@ -350,16 +348,16 @@ private fun StyledToggleContent(
                 ) {
                     Text(
                         text = label,
-                        style = MaterialTheme.typography.labelMedium,
+                        style = MaterialTheme.typography.bodyMedium,
                         color = textColor,
                     )
 
                     if (description != null) {
-                        Spacer(modifier = Modifier.height(4.dp))
+                        Spacer(modifier = Modifier.height(2.dp))
                         Text(
                             text = description,
                             style = MaterialTheme.typography.bodySmall,
-                            color = textColor.copy(alpha = textColor.alpha * 0.8f)
+                            color = AppleColors.secondaryLabel()
                         )
                     }
                 }
@@ -376,10 +374,9 @@ private fun StyledToggleContent(
             }
             if (index+1 != count) {
                 HorizontalDivider(
-                    thickness = 1.dp,
-                    color = Color(0x40888888),
-                    modifier = Modifier
-                        .padding(start = 12.dp,end = 12.dp)
+                    thickness = Dp.Hairline,
+                    color = AppleColors.separator(),
+                    modifier = Modifier.padding(start = AppleMetrics.ContentInset)
                 )
             }
         }

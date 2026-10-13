@@ -18,6 +18,7 @@
 
 package me.kavishdevar.librepods.presentation.components
 
+import me.kavishdevar.librepods.presentation.theme.AppleMetrics
 import android.annotation.SuppressLint
 import android.content.res.Configuration
 import android.util.Log
@@ -724,46 +725,21 @@ fun StyledSlider(
                         .fillMaxWidth(),
                     verticalArrangement = Arrangement.spacedBy(2.dp)
                 ) {
-                    if (label != null) {
-                        Text(
-                            text = label,
-                            style = TextStyle(
-                                fontSize = 14.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = labelTextColor.copy(alpha = 0.6f),
-                                fontFamily = sfProFamily
-                            ),
-                            modifier = Modifier.padding(horizontal = 18.dp, vertical = 4.dp)
-                        )
-                    }
+                    if (label != null) AppleSectionHeader(label)
 
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .background(backgroundColor, AppleShape(28.dp))
+                            .background(backgroundColor, AppleShape(AppleMetrics.CardRadius))
                             .padding(horizontal = 8.dp, vertical = 0.dp)
-                            .heightIn(min = 58.dp)
+                            .heightIn(min = AppleMetrics.RowHeight)
                             .then(accessibilityModifier),
                         contentAlignment = Alignment.Center
                     ) {
                         content()
                     }
 
-                    if (description != null) {
-                        Text(
-                            text = description,
-                            style = TextStyle(
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Light,
-                                color = (if (isSystemInDarkTheme()) Color.White else Color.Black).copy(
-                                    alpha = 0.6f
-                                ),
-                                fontFamily = sfProFamily
-                            ),
-                            modifier = Modifier
-                                .padding(horizontal = 18.dp, vertical = 4.dp)
-                        )
-                    }
+                    if (description != null) AppleFooter(description)
                 }
             } else {
                 if (label != null) Log.w(

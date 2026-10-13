@@ -20,6 +20,8 @@
 
 package me.kavishdevar.librepods.presentation.components
 
+import me.kavishdevar.librepods.presentation.theme.LocalDesignSystem
+import me.kavishdevar.librepods.presentation.theme.DesignSystem
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.res.stringResource
 import me.kavishdevar.librepods.R
@@ -36,7 +38,7 @@ fun HearingHealthSettings(
     val shouldShowHearingAid = hasHearingAidCapability && vendorIdHook
 
     if (hasPPECapability && shouldShowHearingAid) {
-        StyledList(title = stringResource(R.string.hearing_health)) {
+        StyledList(title = stringResource(R.string.hearing_health).takeUnless { LocalDesignSystem.current == DesignSystem.Apple }) {
             StyledListItem(
                 name = stringResource(R.string.hearing_protection),
                 onClick = navigateToHearingProtection
@@ -54,7 +56,7 @@ fun HearingHealthSettings(
         )
     } else if (hasPPECapability) {
         StyledListItem(
-            title = stringResource(R.string.hearing_health),
+            title = stringResource(R.string.hearing_health).takeUnless { LocalDesignSystem.current == DesignSystem.Apple },
             name = stringResource(R.string.hearing_protection),
             onClick = navigateToHearingProtection
         )

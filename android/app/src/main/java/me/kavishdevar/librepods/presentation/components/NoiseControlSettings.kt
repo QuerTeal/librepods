@@ -20,6 +20,11 @@
 
 package me.kavishdevar.librepods.presentation.components
 
+import androidx.compose.ui.unit.Dp
+import androidx.compose.foundation.border
+import me.kavishdevar.librepods.presentation.theme.AppleText
+import me.kavishdevar.librepods.presentation.theme.AppleMetrics
+import me.kavishdevar.librepods.presentation.theme.AppleColors
 import android.annotation.SuppressLint
 import androidx.compose.animation.core.AnimationSpec
 import androidx.compose.animation.core.Spring
@@ -215,10 +220,10 @@ fun NoiseControlSettings(
 
         DesignSystem.Apple -> {
             val isDarkTheme = isSystemInDarkTheme()
-            val backgroundColor = if (isDarkTheme) Color(0xFF1C1C1E) else Color(0xFFE3E3E8)
+            val backgroundColor = AppleColors.segmentTrack()
             val textColor = if (isDarkTheme) Color.White else Color.Black
             val textColorSelected = if (isDarkTheme) Color.White else Color.Black
-            val selectedBackground = if (isDarkTheme) Color(0xBF5C5A5F) else Color(0xFFFFFFFF)
+            val selectedBackground = AppleColors.segmentSelected()
 
             val noiseControlMode = remember { mutableStateOf(NoiseControlMode.OFF) }
 
@@ -271,22 +276,10 @@ fun NoiseControlSettings(
 
             onModeSelected(noiseControlMode.value, received = true)
 
-            Box(
-                modifier = Modifier
-                    .background(MaterialTheme.colorScheme.surfaceContainer)
-                    .padding(horizontal = 16.dp)
-                    .padding(top = 4.dp, bottom = 4.dp)
-            ) {
-                Text(
-                    text = stringResource(R.string.noise_control),
-                    color = MaterialTheme.colorScheme.sectionHeader,
-                    style = MaterialTheme.typography.labelSmallEmphasized
-                )
-            }
+            AppleSectionHeader(stringResource(R.string.noise_control))
             BoxWithConstraints(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(vertical = 8.dp)
             ) {
                 val density = LocalDensity.current
                 val buttonCount = if (showOffListeningMode) 4 else 3
@@ -333,8 +326,8 @@ fun NoiseControlSettings(
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(60.dp)
-                            .background(backgroundColor, AppleShape(28.dp))
+                            .height(AppleMetrics.SegmentHeight)
+                            .background(backgroundColor, AppleShape(AppleMetrics.SegmentHeight / 2))
                     ) {
                         Row(
                             modifier = Modifier.fillMaxWidth()
@@ -352,7 +345,7 @@ fun NoiseControlSettings(
                                     modifier = Modifier
                                         .padding(vertical = 10.dp)
                                         .alpha(d1a.floatValue),
-                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f)
+                                    color = Color.Transparent
                                 )
                             }
                             NoiseControlButton(
@@ -367,7 +360,7 @@ fun NoiseControlSettings(
                                 modifier = Modifier
                                     .padding(vertical = 10.dp)
                                     .alpha(d2a.floatValue),
-                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f)
+                                color = Color.Transparent
                             )
                             NoiseControlButton(
                                 icon = ImageBitmap.imageResource(R.drawable.adaptive),
@@ -381,7 +374,7 @@ fun NoiseControlSettings(
                                 modifier = Modifier
                                     .padding(vertical = 10.dp)
                                     .alpha(d3a.floatValue),
-                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f)
+                                color = Color.Transparent
                             )
                             NoiseControlButton(
                                 icon = ImageBitmap.imageResource(R.drawable.noise_cancellation),
@@ -426,8 +419,10 @@ fun NoiseControlSettings(
                             Box(
                                 modifier = Modifier
                                     .fillMaxSize()
-                                    .padding(3.dp)
-                                    .background(selectedBackground, AppleShape(26.dp))
+                                    .padding(AppleMetrics.SegmentInset)
+                                    .background(selectedBackground, AppleShape(AppleMetrics.SegmentHeight / 2))
+                                    // The dark pill is black on the track; a faint rim separates it.
+                                    .then(if (isDarkTheme) Modifier.border(Dp.Hairline, Color.White.copy(alpha = 0.16f), AppleShape(AppleMetrics.SegmentHeight / 2)) else Modifier)
                             )
                         }
 
@@ -449,7 +444,7 @@ fun NoiseControlSettings(
                                     modifier = Modifier
                                         .padding(vertical = 10.dp)
                                         .alpha(d1a.floatValue),
-                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f)
+                                    color = Color.Transparent
                                 )
                             }
                             NoiseControlButton(
@@ -464,7 +459,7 @@ fun NoiseControlSettings(
                                 modifier = Modifier
                                     .padding(vertical = 10.dp)
                                     .alpha(d2a.floatValue),
-                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f)
+                                color = Color.Transparent
                             )
                             NoiseControlButton(
                                 icon = ImageBitmap.imageResource(R.drawable.adaptive),
@@ -478,7 +473,7 @@ fun NoiseControlSettings(
                                 modifier = Modifier
                                     .padding(vertical = 10.dp)
                                     .alpha(d3a.floatValue),
-                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f)
+                                color = Color.Transparent
                             )
                             NoiseControlButton(
                                 icon = ImageBitmap.imageResource(R.drawable.noise_cancellation),
@@ -493,31 +488,31 @@ fun NoiseControlSettings(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(top = 4.dp)
+                            .padding(top = 8.dp)
                     ) {
                         if (showOffListeningMode) {
                             Text(
                                 text = stringResource(R.string.off),
-                                style = TextStyle(fontSize = 12.sp, color = textColor, fontFamily = sfProFamily),
+                                style = AppleText.segmentLabel.copy(color = textColor),
                                 textAlign = TextAlign.Center,
                                 modifier = Modifier.weight(1f)
                             )
                         }
                         Text(
                             text = stringResource(R.string.transparency),
-                            style = TextStyle(fontSize = 12.sp, color = textColor, fontFamily = sfProFamily),
+                            style = AppleText.segmentLabel.copy(color = textColor),
                             textAlign = TextAlign.Center,
                             modifier = Modifier.weight(1f)
                         )
                         Text(
                             text = stringResource(R.string.adaptive),
-                            style = TextStyle(fontSize = 12.sp, color = textColor, fontFamily = sfProFamily),
+                            style = AppleText.segmentLabel.copy(color = textColor),
                             textAlign = TextAlign.Center,
                             modifier = Modifier.weight(1f)
                         )
                         Text(
                             text = stringResource(R.string.noise_cancellation),
-                            style = TextStyle(fontSize = 12.sp, color = textColor, fontFamily = sfProFamily),
+                            style = AppleText.segmentLabel.copy(color = textColor),
                             textAlign = TextAlign.Center,
                             modifier = Modifier.weight(1f)
                         )

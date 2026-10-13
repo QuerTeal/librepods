@@ -29,12 +29,14 @@ internal object ScreenState {
     fun encode(screen: Screen): String = when (screen) {
         is Screen.LongPress -> "long_press:${screen.bud}"
         is Screen.CallControl -> "call_control:${screen.action}"
+        is Screen.AirPodsSection -> "section:${screen.section}"
         else -> destinations.entries.first { it.value == screen }.key
     }
 
     fun decode(route: String): Screen? = when {
         route.startsWith("long_press:") -> Screen.LongPress(route.substringAfter(':'))
         route.startsWith("call_control:") -> Screen.CallControl(route.substringAfter(':'))
+        route.startsWith("section:") -> Screen.AirPodsSection(route.substringAfter(':'))
         else -> destinations[route]
     }
 }

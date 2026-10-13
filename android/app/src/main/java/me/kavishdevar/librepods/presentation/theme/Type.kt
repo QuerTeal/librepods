@@ -58,13 +58,15 @@ val AppleTypography = Typography().run {
         titleSmall = titleSmall.copy(fontFamily = sfProFamily),
 
         bodyLarge = bodyLarge.copy(fontFamily = sfProFamily),
+        // iOS body (17 pt) and footnote (13 pt), measured from iPadOS 27 Settings.
         bodyMedium = bodyMedium.copy(
             fontFamily = sfProFamily,
-            fontSize = 16.sp
+            fontSize = 17.sp,
+            lineHeight = 22.sp
         ),
         bodySmall = bodySmall.copy(
             fontFamily = sfProFamily,
-            fontSize = 14.sp,
+            fontSize = 13.sp,
             lineHeight = 18.sp
         ),
 

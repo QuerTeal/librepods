@@ -20,6 +20,12 @@
 
 package me.kavishdevar.librepods.presentation.components
 
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.Modifier
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.Spacer
+import me.kavishdevar.librepods.presentation.theme.LocalDesignSystem
+import me.kavishdevar.librepods.presentation.theme.DesignSystem
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.res.stringResource
 import me.kavishdevar.librepods.R
@@ -48,6 +54,26 @@ fun AudioSettings(
     vendorIdHook: Boolean,
     isPremium: Boolean
 ) {
+    if (LocalDesignSystem.current == DesignSystem.Apple) {
+        // iOS 27 Audio & Routing: each switch is its own card with its description as a footer.
+        if (adaptiveVolumeCapability) StyledToggle(label = stringResource(R.string.personalized_volume),
+            description = stringResource(R.string.personalized_volume_description),
+            checked = adaptiveVolumeChecked, onCheckedChange = onAdaptiveVolumeCheckedChange, enabled = isPremium)
+        if (conversationalAwarenessCapability) StyledToggle(label = stringResource(R.string.conversational_awareness),
+            description = stringResource(R.string.conversational_awareness_description),
+            checked = conversationalAwarenessChecked, onCheckedChange = onConversationalAwarenessCheckedChange, enabled = isPremium)
+        if (loudSoundReductionCapability && vendorIdHook) StyledToggle(label = stringResource(R.string.loud_sound_reduction),
+            description = stringResource(R.string.loud_sound_reduction_description),
+            checked = loudSoundReductionChecked, onCheckedChange = onLoudSoundReductionCheckedChange, enabled = isPremium)
+        if (adaptiveAudioCapability || customEqCapability) {
+            Spacer(modifier = Modifier.height(12.dp))
+            StyledList {
+                if (adaptiveAudioCapability) StyledListItem(name = stringResource(R.string.adaptive_audio), onClick = navigateToAdaptiveStrength)
+                if (customEqCapability) StyledListItem(name = stringResource(R.string.equalizer), onClick = navigateToEqualizer)
+            }
+        }
+        return
+    }
     if (adaptiveVolumeCapability || conversationalAwarenessCapability || loudSoundReductionCapability || adaptiveAudioCapability) {
         StyledList(title = stringResource(R.string.audio)) {
             if (adaptiveVolumeCapability) {
