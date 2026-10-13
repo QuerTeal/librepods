@@ -105,7 +105,6 @@ import androidx.graphics.shapes.Morph
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import com.kyant.backdrop.drawBackdrop
 import com.kyant.backdrop.highlight.Highlight
-import dev.chrisbanes.haze.materials.ExperimentalHazeMaterialsApi
 import kotlinx.coroutines.delay
 import me.kavishdevar.librepods.BuildConfig
 import me.kavishdevar.librepods.R
@@ -219,7 +218,7 @@ fun AirPodsSettingsRoute(
     }
 }
 
-    @OptIn(ExperimentalMaterial3Api::class, ExperimentalHazeMaterialsApi::class)
+    @OptIn(ExperimentalMaterial3Api::class)
 @SuppressLint("MissingPermission", "UnspecifiedRegisterReceiverFlag")
 @Composable
 fun AirPodsSettingsScreen(

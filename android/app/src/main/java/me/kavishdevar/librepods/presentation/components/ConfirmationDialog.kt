@@ -69,7 +69,6 @@ import com.kyant.backdrop.drawBackdrop
 import com.kyant.backdrop.effects.blur
 import com.kyant.backdrop.effects.lens
 import com.kyant.backdrop.effects.vibrancy
-import dev.chrisbanes.haze.materials.ExperimentalHazeMaterialsApi
 import me.kavishdevar.librepods.R
 import me.kavishdevar.librepods.presentation.theme.AppleShape
 import me.kavishdevar.librepods.presentation.theme.DesignSystem
@@ -77,7 +76,6 @@ import me.kavishdevar.librepods.presentation.theme.LocalDesignSystem
 import me.kavishdevar.librepods.presentation.theme.LocalOneUI
 
 @OptIn(ExperimentalMaterial3Api::class)
-@ExperimentalHazeMaterialsApi
 @Composable
 fun ConfirmationDialog(
     showDialog: MutableState<Boolean>,

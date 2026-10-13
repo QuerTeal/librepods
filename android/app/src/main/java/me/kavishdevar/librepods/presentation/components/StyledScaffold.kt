@@ -76,8 +76,10 @@ import androidx.compose.ui.zIndex
 import com.kyant.backdrop.backdrops.LayerBackdrop
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
-import dev.chrisbanes.haze.HazeTint
-import dev.chrisbanes.haze.hazeEffect
+import dev.chrisbanes.haze.HazeInput
+import dev.chrisbanes.haze.blur.hazeBlur
+import dev.chrisbanes.haze.blur.HazeBlurStyle
+import dev.chrisbanes.haze.blur.HazeColorEffect
 import dev.chrisbanes.haze.hazeSource
 import dev.chrisbanes.haze.rememberHazeState
 import me.kavishdevar.librepods.R
@@ -139,7 +141,7 @@ fun StyledScaffold(
         return
     }
     val isDarkTheme = isSystemInDarkTheme()
-    val hazeState = rememberHazeState(blurEnabled = true)
+    val hazeState = rememberHazeState()
 
     when (LocalDesignSystem.current) {
         DesignSystem.Material -> {
@@ -279,26 +281,28 @@ fun StyledScaffold(
                             .layerBackdrop(backdrop)
                     ){
                         Box(
-                            modifier = Modifier.hazeEffect(
-                                state = hazeState,
-                            ) {
-                                // iOS's scroll-edge effect: the frosting fades out below the bar
-                                // instead of ending on a hard line across the content.
-                                mask = Brush.verticalGradient(
-                                    0f to Color.Black,
-                                    0.72f to Color.Black,
-                                    1f to Color.Transparent
-                                )
-                                backgroundColor = bgColor
-                                tints = listOf(
-                                    HazeTint(
-                                        if (isDarkTheme) Color.Black.copy(0.55f) else Color(
-                                            0xFFF2F2F7
-                                        ).copy(alpha = 0.85f)
-                                    )
-                                )
-                                blurRadius = 6.dp
-                            }
+                            modifier = Modifier.hazeBlur(
+                                input = HazeInput.Sources(hazeState),
+                                style = HazeBlurStyle {
+                                    blurEnabled(true)
+                                    // iOS's scroll-edge effect: the frosting fades out below the bar
+                                    // instead of ending on a hard line across the content.
+                                    mask(Brush.verticalGradient(
+                                        0f to Color.Black,
+                                        0.72f to Color.Black,
+                                        1f to Color.Transparent
+                                    ))
+                                    backgroundColor(bgColor)
+                                    colorEffects(listOf(
+                                        HazeColorEffect.tint(
+                                            if (isDarkTheme) Color.Black.copy(0.55f) else Color(
+                                                0xFFF2F2F7
+                                            ).copy(alpha = 0.85f)
+                                        )
+                                    ))
+                                    blurRadius(6.dp)
+                                }
+                            )
                         ) {
 
                             Column(modifier = Modifier.fillMaxSize()) {

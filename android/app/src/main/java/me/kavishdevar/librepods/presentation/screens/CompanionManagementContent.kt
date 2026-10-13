@@ -18,7 +18,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
-import dev.chrisbanes.haze.materials.ExperimentalHazeMaterialsApi
 import me.kavishdevar.librepods.R
 import me.kavishdevar.librepods.presentation.components.ConfirmationDialog
 import me.kavishdevar.librepods.presentation.components.StyledList
@@ -28,7 +27,6 @@ import me.kavishdevar.librepods.presentation.components.screenBottomPadding
 import me.kavishdevar.librepods.presentation.components.screenTopPadding
 
 /** Only presentation: registration mutations are supplied by the host after an explicit action. */
-@OptIn(ExperimentalHazeMaterialsApi::class)
 @Composable
 internal fun CompanionManagementContent(onEnable: () -> Unit, onRemove: () -> Unit, onBack: () -> Unit) {
     val confirmation = remember { mutableStateOf(false) }

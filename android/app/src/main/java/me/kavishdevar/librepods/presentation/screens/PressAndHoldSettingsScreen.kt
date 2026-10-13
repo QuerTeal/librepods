@@ -47,7 +47,6 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
-import dev.chrisbanes.haze.materials.ExperimentalHazeMaterialsApi
 import me.kavishdevar.librepods.R
 import me.kavishdevar.librepods.presentation.components.screenBottomPadding
 import me.kavishdevar.librepods.presentation.components.screenTopPadding
@@ -63,7 +62,6 @@ import me.kavishdevar.librepods.presentation.viewmodel.AirPodsViewModel
 import kotlin.experimental.and
 import kotlin.io.encoding.ExperimentalEncodingApi
 
-@ExperimentalHazeMaterialsApi
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LongPress(viewModel: AirPodsViewModel, name: String, navigateToPurchase: () -> Unit) {

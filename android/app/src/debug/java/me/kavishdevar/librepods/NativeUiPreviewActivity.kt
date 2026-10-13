@@ -365,7 +365,6 @@ private fun PanelFixture() {
 }
 
 @Composable
-@OptIn(dev.chrisbanes.haze.materials.ExperimentalHazeMaterialsApi::class)
 private fun ControlsFixture(design: AppDesign, showDialog: Boolean, onDesignChange: (AppDesign) -> Unit) {
     var checked by rememberSaveable { mutableStateOf(false) }
     var selected by rememberSaveable { mutableStateOf(false) }

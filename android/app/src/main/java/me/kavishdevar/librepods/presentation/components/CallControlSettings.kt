@@ -26,11 +26,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.res.stringResource
-import dev.chrisbanes.haze.materials.ExperimentalHazeMaterialsApi
 import me.kavishdevar.librepods.R
 import kotlin.io.encoding.ExperimentalEncodingApi
 
-@ExperimentalHazeMaterialsApi
 @Composable
 fun CallControlSettings(
     flipped: Boolean,
