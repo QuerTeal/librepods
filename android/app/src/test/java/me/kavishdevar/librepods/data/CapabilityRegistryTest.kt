@@ -30,8 +30,12 @@ class CapabilityRegistryTest {
         assertFalse(map.getValue(AirPodsFeature.TRANSPARENCY).canUse)
     }
 
-    @Test fun heartRateCapabilityIsNotStreamingEvidence() {
-        assertFalse(CapabilityRegistry.resolve(pro3).getValue(AirPodsFeature.HEART_RATE).canUse)
+    @Test fun heartRateNeedsTheSensorAndAConnection() {
+        assertTrue(CapabilityRegistry.resolve(pro3).getValue(AirPodsFeature.HEART_RATE).canUse)
+        assertEquals(FeatureReason.CONNECTION_REQUIRED,
+            CapabilityRegistry.resolve(pro3.copy(controlReady = false)).getValue(AirPodsFeature.HEART_RATE).reason)
+        assertEquals(FeatureReason.MODEL_UNSUPPORTED, CapabilityRegistry.resolve(
+            pro3.copy(capabilities = pro3.capabilities - Capability.HRM)).getValue(AirPodsFeature.HEART_RATE).reason)
     }
 
     @Test fun personalizedVolumeDoesNotImplyAdaptiveAudio() {

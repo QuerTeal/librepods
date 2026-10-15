@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 package me.kavishdevar.librepods.presentation.components
 
+import androidx.compose.material3.Icon
+import androidx.compose.ui.graphics.painter.Painter
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -68,6 +70,19 @@ internal fun AppleIconTile(glyph: String, color: Color) {
         contentAlignment = Alignment.Center
     ) {
         Text(glyph, style = TextStyle(fontFamily = sfProFamily, fontSize = 15.sp, color = Color.White))
+    }
+}
+
+/** [AppleIconTile] with a drawable for glyphs the bundled SF font lacks. */
+@Composable
+internal fun AppleIconTile(painter: Painter, color: Color) {
+    Box(
+        modifier = Modifier
+            .size(AppleMetrics.IconTile)
+            .background(color, AppleShape(AppleMetrics.IconTileRadius)),
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(painter, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
     }
 }
 

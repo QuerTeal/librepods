@@ -102,6 +102,7 @@ import android.app.KeyguardManager
 import android.os.PowerManager
 import me.kavishdevar.librepods.bluetooth.ControlConnectionPhase
 import me.kavishdevar.librepods.bluetooth.ControlConnectionState
+import me.kavishdevar.librepods.bluetooth.SensorDataWx
 import me.kavishdevar.librepods.bluetooth.SocketDeadline
 import me.kavishdevar.librepods.bluetooth.AudioTakeoverOptions
 import me.kavishdevar.librepods.bluetooth.AudioTakeoverPolicy
@@ -120,6 +121,7 @@ import me.kavishdevar.librepods.data.BatteryStatus
 import me.kavishdevar.librepods.data.combinedBudsBattery
 import me.kavishdevar.librepods.data.Capability
 import me.kavishdevar.librepods.data.CustomEq
+import me.kavishdevar.librepods.data.HeartRateMonitor
 import me.kavishdevar.librepods.data.StemAction
 import me.kavishdevar.librepods.data.XposedRemotePrefProvider
 import me.kavishdevar.librepods.data.isHeadTrackingData
@@ -291,6 +293,11 @@ class AirPodsService : Service(), SharedPreferences.OnSharedPreferenceChangeList
         init {
             System.loadLibrary("bluetooth_socket")
         }
+
+        const val HEART_RATE_ALERT_KEY = "heart_rate_alert"
+        const val HEART_RATE_ALERT_THRESHOLD_KEY = "heart_rate_alert_threshold"
+        private const val HEART_RATE_ALERT_CHANNEL = "heart_rate_alert"
+        private const val HEART_RATE_ALERT_ID = 41
     }
 
     private val bleStatusListener = object : BLEManager.AirPodsStatusListener {
@@ -1146,6 +1153,11 @@ class AirPodsService : Service(), SharedPreferences.OnSharedPreferenceChangeList
                     HeadTracking.processPacket(headTracking)
                     processHeadTrackingData(headTracking)
                 }
+            }
+
+            override fun onHeartRateReceived(bpm: Int) {
+                HeartRateMonitor.add(bpm)
+                checkHeartRateAlert(bpm)
             }
 
             override fun onProximityKeysReceived(proximityKeys: ByteArray) {
@@ -3069,6 +3081,8 @@ class AirPodsService : Service(), SharedPreferences.OnSharedPreferenceChangeList
                         })
                         showIsland(this@AirPodsService,
                             batteryNotification.getBattery().combinedBudsBattery()?.level ?: -1)
+                        // The high heart rate alert needs the sensor running whenever the buds are connected.
+                        if (sharedPreferences.getBoolean(HEART_RATE_ALERT_KEY, false)) startHeartRate()
                         // No unsolicited head-tracking probes or old-session delayed handshakes.
                         serviceScope.launch(Dispatchers.IO) {
                             if (connectionCoordinator.isCurrent(session)) {
@@ -3166,6 +3180,8 @@ class AirPodsService : Service(), SharedPreferences.OnSharedPreferenceChangeList
         MediaController.cancelReplay()
         callGestureGuard.invalidate()
         endCallGestureDetection()
+        HeartRateMonitor.off()
+        cancelHeartRateAlert()
         _controlConnectionState.value = connectionCoordinator.state
         updateNotificationContent(false)
         sendBroadcast(Intent(AirPodsNotifications.AIRPODS_DISCONNECTED).apply {
@@ -3209,6 +3225,8 @@ class AirPodsService : Service(), SharedPreferences.OnSharedPreferenceChangeList
         MediaController.cancelReplay()
         callGestureGuard.invalidate()
         endCallGestureDetection()
+        HeartRateMonitor.off()
+        cancelHeartRateAlert()
         _controlConnectionState.value = connectionCoordinator.state
         updateNotificationContent(false)
         if (!shutdown) sendBroadcast(Intent(AirPodsNotifications.AIRPODS_DISCONNECTED).setPackage(packageName))
@@ -3598,6 +3616,60 @@ class AirPodsService : Service(), SharedPreferences.OnSharedPreferenceChangeList
         }
         isHeadTrackingActive = false
         gestureDetector?.stopDetection(doNotStop = true)
+    }
+
+    val supportsHeartRate: Boolean
+        get() = airpodsInstance?.model?.capabilities?.contains(Capability.HRM) == true
+
+    /** Firmware 9 and later starts heart rate through a different sensor service. */
+    private fun heartRateService() =
+        SensorDataWx.heartRateService(sharedPreferences.getString("airpods_version3", "") ?: "")
+
+    fun startHeartRate(): Boolean {
+        if (!supportsHeartRate || connectionCoordinator.state.phase != ControlConnectionPhase.READY) return false
+        val sent = aacpManager.setHeartRateReporting(heartRateService(), true)
+        if (sent) HeartRateMonitor.measuring()
+        return sent
+    }
+
+    fun stopHeartRate() {
+        if (connectionCoordinator.state.phase == ControlConnectionPhase.READY)
+            aacpManager.setHeartRateReporting(heartRateService(), false)
+        HeartRateMonitor.off()
+        cancelHeartRateAlert()
+    }
+
+    @OptIn(ExperimentalMaterial3Api::class)
+    private fun checkHeartRateAlert(bpm: Int) {
+        if (!sharedPreferences.getBoolean(HEART_RATE_ALERT_KEY, false)) return
+        val threshold = sharedPreferences.getInt(HEART_RATE_ALERT_THRESHOLD_KEY, HeartRateMonitor.DEFAULT_ALERT_THRESHOLD)
+            .coerceIn(HeartRateMonitor.ALERT_RANGE)
+        if (bpm <= threshold) {
+            cancelHeartRateAlert()
+            return
+        }
+        Log.i(TAG, "Heart rate $bpm is above the $threshold alert threshold")
+        if (checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return
+        val notificationManager = getSystemService(NotificationManager::class.java)
+        notificationManager.createNotificationChannel(NotificationChannel(
+            HEART_RATE_ALERT_CHANNEL, getString(R.string.high_heart_rate), NotificationManager.IMPORTANCE_HIGH
+        ))
+        val open = PendingIntent.getActivity(this, 0,
+            Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+        notificationManager.notify(HEART_RATE_ALERT_ID, NotificationCompat.Builder(this, HEART_RATE_ALERT_CHANNEL)
+            .setSmallIcon(R.drawable.ic_heart_rate)
+            .setContentTitle(getString(R.string.high_heart_rate))
+            .setContentText(getString(R.string.high_heart_rate_notification_text, bpm, threshold))
+            .setCategory(NotificationCompat.CATEGORY_STATUS)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setOnlyAlertOnce(true)
+            .setContentIntent(open)
+            .build())
+    }
+
+    private fun cancelHeartRateAlert() {
+        getSystemService(NotificationManager::class.java).cancel(HEART_RATE_ALERT_ID)
     }
 
     @SuppressLint("MissingPermission")

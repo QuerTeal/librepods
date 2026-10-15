@@ -65,4 +65,5 @@ object AppleColors {
     val accessibilityTile = Color(0xFF0A84FF)
     val batteryTile = Color(0xFF34C759)
     val statusTile = Color(0xFF5856D6)
+    val heartRateTile = Color(0xFFFF2D55)
 }

@@ -65,6 +65,9 @@ import me.kavishdevar.librepods.data.BatteryStatus
 import me.kavishdevar.librepods.data.Capability
 import me.kavishdevar.librepods.data.ControlCommandRepository
 import me.kavishdevar.librepods.data.CustomEq
+import me.kavishdevar.librepods.data.HeartRateMonitor
+import me.kavishdevar.librepods.data.HeartRateState
+import me.kavishdevar.librepods.data.HeartRateStatus
 import me.kavishdevar.librepods.data.StemAction
 import me.kavishdevar.librepods.data.XposedRemotePrefProvider
 import me.kavishdevar.librepods.services.AirPodsService
@@ -96,6 +99,9 @@ data class AirPodsUiState(
 
     val headTrackingActive: Boolean = false,
     val headGesturesEnabled: Boolean = true,
+
+    val heartRateAlert: Boolean = false,
+    val heartRateAlertThreshold: Int = HeartRateMonitor.DEFAULT_ALERT_THRESHOLD,
 
     val eqData: FloatArray = floatArrayOf(),
 
@@ -592,9 +598,15 @@ class AirPodsViewModel(
         val dynamicEndOfCharge = sharedPreferences.getBoolean("dynamic_end_of_charge", false)
 
         val connectionSuccessful = sharedPreferences.getBoolean("connection_successful", false)
+        val heartRateAlert = sharedPreferences.getBoolean(AirPodsService.HEART_RATE_ALERT_KEY, false)
+        val heartRateAlertThreshold = sharedPreferences.getInt(
+            AirPodsService.HEART_RATE_ALERT_THRESHOLD_KEY, HeartRateMonitor.DEFAULT_ALERT_THRESHOLD
+        ).coerceIn(HeartRateMonitor.ALERT_RANGE)
 
         _uiState.update {
             it.copy(
+                heartRateAlert = heartRateAlert,
+                heartRateAlertThreshold = heartRateAlertThreshold,
                 offListeningMode = offListeningModeEnabled,
                 automaticEarDetectionEnabled = automaticEarDetectionEnabled,
                 automaticConnectionEnabled = automaticConnectionEnabled,
@@ -729,6 +741,27 @@ class AirPodsViewModel(
     fun stopHeadTracking() {
         service.stopHeadTracking()
         _uiState.update { it.copy(headTrackingActive = false) }
+    }
+
+    val heartRate: StateFlow<HeartRateState> = HeartRateMonitor.state
+
+    fun startHeartRate(): Boolean = !isDemoMode && service.startHeartRate()
+
+    fun stopHeartRate() {
+        if (!isDemoMode) service.stopHeartRate()
+    }
+
+    /** The alert keeps the sensor on while connected, so turning it on also starts measuring. */
+    fun setHeartRateAlert(enabled: Boolean) {
+        sharedPreferences.edit { putBoolean(AirPodsService.HEART_RATE_ALERT_KEY, enabled) }
+        _uiState.update { it.copy(heartRateAlert = enabled) }
+        if (enabled && heartRate.value.status == HeartRateStatus.OFF) startHeartRate()
+    }
+
+    fun setHeartRateAlertThreshold(bpm: Int) {
+        val value = bpm.coerceIn(HeartRateMonitor.ALERT_RANGE)
+        sharedPreferences.edit { putInt(AirPodsService.HEART_RATE_ALERT_THRESHOLD_KEY, value) }
+        _uiState.update { it.copy(heartRateAlertThreshold = value) }
     }
 
     fun setATTCharacteristicValue(handle: ATTHandles, value: ByteArray) {

@@ -90,6 +90,7 @@ import androidx.compose.ui.graphics.Matrix
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.Font
@@ -162,6 +163,7 @@ fun AirPodsSettingsRoute(
     navigateToCallControlScreen: (action: String) -> Unit,
     navigateToMicrophoneSettings: () -> Unit,
     navigateToFeatureStatus: () -> Unit = {},
+    navigateToHeartRate: () -> Unit = {},
     section: String? = null,
     navigateToSection: (String) -> Unit = {}
 ) {
@@ -210,6 +212,7 @@ fun AirPodsSettingsRoute(
             navigateToCallControlScreen = navigateToCallControlScreen,
             navigateToMicrophoneSettings = navigateToMicrophoneSettings,
             navigateToFeatureStatus = navigateToFeatureStatus,
+            navigateToHeartRate = navigateToHeartRate,
             section = section,
             navigateToSection = navigateToSection,
 
@@ -258,6 +261,7 @@ fun AirPodsSettingsScreen(
         activateDemoMode: () -> Unit,
         reconnectFromSavedMac: () -> Unit,
         navigateToFeatureStatus: () -> Unit = {},
+        navigateToHeartRate: () -> Unit = {},
         section: String? = null,
         navigateToSection: (String) -> Unit = {},
 ) {
@@ -486,6 +490,9 @@ fun AirPodsSettingsScreen(
                     if (hasHearing) StyledListItem(name = stringResource(R.string.hearing_health),
                         onClick = { navigateToSection(AirPodsSection.HEARING) },
                         leadingContent = { AppleIconTile(AppleGlyphs.EAR, AppleColors.hearingTile) })
+                    if (capabilities.contains(Capability.HRM)) StyledListItem(name = stringResource(R.string.heart_rate),
+                        onClick = navigateToHeartRate,
+                        leadingContent = { AppleIconTile(painterResource(R.drawable.ic_heart_rate), AppleColors.heartRateTile) })
                     StyledListItem(name = stringResource(R.string.controls_and_gestures),
                         onClick = { navigateToSection(AirPodsSection.CONTROLS) },
                         leadingContent = { AppleIconTile(AppleGlyphs.GESTURE, AppleColors.controlsTile) })
@@ -678,6 +685,13 @@ fun AirPodsSettingsScreen(
                         ) stringResource(R.string.on) else stringResource(R.string.off),
                         onClick = navigateToHeadTracking
                     )
+                }
+            }
+
+            if (capabilities.contains(Capability.HRM)) {
+                entry("spacer_heart_rate") { Spacer(modifier = Modifier.height(sectionGap)) }
+                entry("heart_rate") {
+                    StyledListItem(name = stringResource(R.string.heart_rate), onClick = navigateToHeartRate)
                 }
             }
 

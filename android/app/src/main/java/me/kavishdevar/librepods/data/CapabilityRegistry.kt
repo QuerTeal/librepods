@@ -63,7 +63,7 @@ object CapabilityRegistry {
                 return unavailable(FeatureReason.FIRMWARE_PROTOCOL_REQUIRED, FeatureTransport.AACP)
             AirPodsFeature.SPATIAL_AUDIO ->
                 return unavailable(FeatureReason.ANDROID_RENDERER_REQUIRED, FeatureTransport.ANDROID)
-            AirPodsFeature.HIGH_QUALITY_MICROPHONE, AirPodsFeature.HEART_RATE ->
+            AirPodsFeature.HIGH_QUALITY_MICROPHONE ->
                 return unavailable(FeatureReason.PROTOCOL_UNVERIFIED, FeatureTransport.AACP)
             AirPodsFeature.LIVE_LISTEN ->
                 return result(if (c.audioOutputAvailable == true) FeatureSupport.AVAILABLE else FeatureSupport.WAITING,
@@ -84,6 +84,7 @@ object CapabilityRegistry {
             AirPodsFeature.CAMERA_REMOTE -> Capability.STEM_CONFIG
             AirPodsFeature.VOLUME_SWIPE -> Capability.SWIPE_FOR_VOLUME
             AirPodsFeature.HEAD_GESTURES -> Capability.HEAD_GESTURES
+            AirPodsFeature.HEART_RATE -> Capability.HRM
             AirPodsFeature.SLEEP_DETECTION -> Capability.SLEEP_DETECTION
             AirPodsFeature.LOUD_SOUND_REDUCTION -> Capability.LOUD_SOUND_REDUCTION
             AirPodsFeature.TRANSPARENCY, AirPodsFeature.HEARING_AID -> Capability.HEARING_AID

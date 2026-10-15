@@ -246,6 +246,7 @@ class AACPManager {
         fun onHeadphoneAccommodationReceived(eqData: FloatArray)
         fun onCustomEqReceived(customEq: CustomEq)
         fun onCapabilitiesReceived(capabilities: List<Capability>)
+        fun onHeartRateReceived(bpm: Int) {}
     }
 
     fun parseStemPressResponse(data: ByteArray): Pair<StemPressType, StemPressBudType> {
@@ -450,6 +451,18 @@ class AACPManager {
             }
 
             Opcodes.HEADTRACKING -> {
+                // Heart rate shares the sensor channel with head tracking.
+                val sensor = SensorDataWx.parseCommand(packet)
+                if (sensor != null && SensorDataWx.isHeartRate(sensor)) {
+                    SensorDataWx.heartRate(sensor.payload)?.let { callback?.onHeartRateReceived(it) }
+                        ?: Log.d(TAG, "Heart rate sample skipped: ${sensor.payload.toHexString()}")
+                    return
+                }
+                if (sensor == null && packet.size < 70 && SensorDataWx.isSensorFrame(packet)) {
+                    // Start/stop acknowledgements for a sensor service.
+                    Log.d(TAG, "Sensor acknowledgement: ${packet.toHexString()}")
+                    return
+                }
                 if (packet.size < 70) {
                     Log.w(
                         TAG, "Received HEADTRACKING packet too short: ${
@@ -623,6 +636,15 @@ class AACPManager {
             0x00,
             0x00
         )
+    }
+
+    private var sensorSequence = 0
+
+    /** Turns the buds' heart rate reports (about once a second) on or off. */
+    fun setHeartRateReporting(service: Int, enabled: Boolean): Boolean {
+        val seq = sensorSequence
+        sensorSequence = (sensorSequence + 1) and 0x7FFFFFFF
+        return sendDataPacket(SensorDataWx.reportIntervalPacket(seq, service, if (enabled) 1_000_000 else 0))
     }
 
     fun sendStartHeadTracking(): Boolean {

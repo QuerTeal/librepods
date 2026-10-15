@@ -108,6 +108,20 @@
     <string name="airpods_volume">Volume</string>
     <string name="wear_both_for_adaptive">To use Adaptive Audio, wear both %1$s.</string>
     <string name="wear_both_for_anc">To use Noise Cancellation, wear both %1$s.</string>
+    <string name="heart_rate">Heart Rate</string>
+    <string name="heart_rate_measure">Measure Heart Rate</string>
+    <string name="heart_rate_measure_description">Uses the heart rate sensor in your AirPods while you wear them. Measuring uses more battery.</string>
+    <string name="heart_rate_waiting">Measuring…</string>
+    <string name="heart_rate_waiting_hint">Wear both AirPods and hold still for a moment.</string>
+    <string name="heart_rate_connect">Connect your AirPods to measure heart rate.</string>
+    <string name="heart_rate_range">Low %1$d · High %2$d</string>
+    <string name="heart_rate_alert">High Heart Rate Alert</string>
+    <string name="heart_rate_alert_description">Notifies you when your heart rate goes above the threshold. The sensor stays on whenever your AirPods are connected.</string>
+    <string name="heart_rate_alert_threshold">Threshold</string>
+    <string name="heart_rate_alert_footer">This alert doesn’t account for exercise or other activity. It’s for information only and isn’t medical advice.</string>
+    <string name="high_heart_rate">High Heart Rate</string>
+    <string name="high_heart_rate_notification_text">Your heart rate is %1$d BPM, above your %2$d BPM threshold.</string>
+    <string name="heart_rate_alert_no_permission">Notifications are off for LibrePods, so alerts can’t be shown. Allow notifications in Settings.</string>
 </resources>
  
 
