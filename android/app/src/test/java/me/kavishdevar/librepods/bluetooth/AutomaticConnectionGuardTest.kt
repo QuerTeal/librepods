@@ -85,6 +85,13 @@ class AutomaticConnectionGuardTest {
         assertFalse(guard.paused)
     }
 
+    @Test fun aRestoredLinkLossHoldStillClearsOnANewOpening() {
+        val guard = AutomaticConnectionGuard(initiallyPaused = true, initiallyPausedByLinkLoss = true)
+        guard.observeCase(false, 5)
+        guard.observeCase(true, 6)
+        assertFalse(guard.paused)
+    }
+
     @Test fun reopeningAfterAHandoffStillHolds() {
         val guard = AutomaticConnectionGuard()
         guard.observeCase(true, 5)

@@ -10,7 +10,7 @@ data class ConnectionEvidence(
 )
 
 /** Owned by the service's main thread. Radio silence and presence never release a handoff. */
-class AutomaticConnectionGuard(initiallyPaused: Boolean = false) {
+class AutomaticConnectionGuard(initiallyPaused: Boolean = false, initiallyPausedByLinkLoss: Boolean = false) {
     var paused = initiallyPaused
         private set
     var revision = 0L
@@ -23,7 +23,8 @@ class AutomaticConnectionGuard(initiallyPaused: Boolean = false) {
     private var lastCaseCounter: Int? = null
     private var pendingCaseLossMillis: Long? = null
     /** Paused only because this phone lost the link, not because another host took over. */
-    private var pausedByLinkLoss = false
+    var pausedByLinkLoss = initiallyPaused && initiallyPausedByLinkLoss
+        private set
 
     fun observeCase(open: Boolean, counter: Int?, bothSeated: Boolean = true, seenMillis: Long = 0) {
         val newOpening = open && (lastCaseOpen != true ||

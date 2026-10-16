@@ -341,6 +341,8 @@ class AirPodsService : Service(), SharedPreferences.OnSharedPreferenceChangeList
                 sendBatteryBroadcast()
             } else {
                 Log.d(TAG, "Lid closed")
+                // The guard needs to see the close to recognise the next opening as new.
+                bleManager.getMostRecentStatus()?.let(::observeConnectionCase)
                 popupScreenGate.onLidClosedOrUnknown()
                 dismissPopup()
             }
@@ -420,7 +422,10 @@ class AirPodsService : Service(), SharedPreferences.OnSharedPreferenceChangeList
 
         sharedPreferences = getSharedPreferences("settings", MODE_PRIVATE)
         initializeConfig()
-        automaticConnectionGuard = AutomaticConnectionGuard(sharedPreferences.getBoolean("control_handoff_paused", false))
+        // The hold survives restarts with its cause, so a lost-link hold can still clear on a new case opening.
+        automaticConnectionGuard = AutomaticConnectionGuard(sharedPreferences.getBoolean("control_handoff_paused", false),
+            // Holds saved before the cause was recorded count as lost links: closing and reopening the case clears them.
+            sharedPreferences.getBoolean("control_hold_link_loss", true))
         _automaticReconnectPaused.value = automaticConnectionGuard.paused
 
         aacpManager = AACPManager()
@@ -1769,7 +1774,10 @@ class AirPodsService : Service(), SharedPreferences.OnSharedPreferenceChangeList
 
     private fun publishReconnectHold() {
         _automaticReconnectPaused.value = automaticConnectionGuard.paused
-        sharedPreferences.edit { putBoolean("control_handoff_paused", automaticConnectionGuard.paused) }
+        sharedPreferences.edit {
+            putBoolean("control_handoff_paused", automaticConnectionGuard.paused)
+            putBoolean("control_hold_link_loss", automaticConnectionGuard.pausedByLinkLoss)
+        }
     }
 
     private fun pauseAutomaticReconnect(reason: String, confirmed: Boolean = true) {
@@ -1815,7 +1823,7 @@ class AirPodsService : Service(), SharedPreferences.OnSharedPreferenceChangeList
             status.lastSeen)
         if (wasPaused && !automaticConnectionGuard.paused) {
             publishReconnectHold()
-            Log.i(TAG, "Automatic reconnect hold resolved by a fresh closed case")
+            Log.i(TAG, "Automatic reconnect hold resolved by the case closing or reopening")
         }
     }
 
