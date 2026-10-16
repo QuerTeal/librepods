@@ -301,6 +301,10 @@ class AirPodsService : Service(), SharedPreferences.OnSharedPreferenceChangeList
             System.loadLibrary("bluetooth_socket")
         }
 
+        private const val CONNECT_DEADLINE_MS = 2500L
+        private const val FIRST_RETRY_MS = 400L
+        private const val HANDSHAKE_RESEND_MS = 1200L
+        private const val HANDSHAKE_RESENDS = 4
         const val CHARGE_FULLY_PENDING_KEY = "charge_fully_pending"
         private const val OPTIMIZED_LIMIT_SEEN_KEY = "optimized_charge_limit_seen"
         /**
@@ -3110,7 +3114,9 @@ class AirPodsService : Service(), SharedPreferences.OnSharedPreferenceChangeList
                     socket = created
                     if (automaticConnectionGuard.paused) return@launch
                     if (!connectionCoordinator.attach(session, created)) return@launch
-                    val deadline = SocketDeadline(socketWatchdog, created, 5000L) {
+                    // A good connect takes about 0.6 s. One started while the link to the buds is still
+                    // coming up can hang instead, and a fresh attempt then connects at once.
+                    val deadline = SocketDeadline(socketWatchdog, created, CONNECT_DEADLINE_MS) {
                         serviceScope.launch { finishControlSession(session, created, "Connect timeout", adapter, device) }
                     }
                     try {
@@ -3198,6 +3204,7 @@ class AirPodsService : Service(), SharedPreferences.OnSharedPreferenceChangeList
                         }
                         if (handleIncomingCallOnceConnected) handleIncomingCall()
                     }
+                    val answered = java.util.concurrent.atomic.AtomicBoolean(false)
                     val reader = launch(Dispatchers.IO) {
                         // L2CAP is packet based and truncates reads into a short buffer; microphone
                         // stream packets can exceed 1 KB.
@@ -3209,6 +3216,13 @@ class AirPodsService : Service(), SharedPreferences.OnSharedPreferenceChangeList
                             if (count < 0) throw IOException("Control socket EOF")
                             if (count == 0) continue
                             val packet = buffer.copyOf(count)
+                            // While their link is still settling the buds can refuse the handshake
+                            // (status 0x85) and then stay silent; a fresh connection is accepted.
+                            if (packet.size >= 5 && packet[0] == 0x01.toByte() && packet[2] == 0x04.toByte() &&
+                                packet[4] != 0x00.toByte()) {
+                                throw IOException("Handshake refused (status 0x%02x)".format(packet[4]))
+                            }
+                            answered.set(true)
                             // The setup requests go out with the handshake, before the buds answer it, and
                             // the buds sometimes drop them: then battery and in-ear status never arrive.
                             // Ask again once the handshake is answered.
@@ -3259,6 +3273,20 @@ class AirPodsService : Service(), SharedPreferences.OnSharedPreferenceChangeList
                             aacpManager.sendRequestProximityKeys(
                                 (AACPManager.Companion.ProximityKeyType.IRK.value +
                                     AACPManager.Companion.ProximityKeyType.ENC_KEY.value).toByte())
+                        }
+                    }
+                    // While the phone is still bringing up HFP and A2DP the buds sometimes ignore the
+                    // handshake; they answer a resend at once instead of after the 8 s timeout.
+                    launch(Dispatchers.IO) {
+                        repeat(HANDSHAKE_RESENDS) { attempt ->
+                            delay(HANDSHAKE_RESEND_MS)
+                            if (answered.get() || !connectionCoordinator.isCurrent(session)) return@launch
+                            Log.i(TAG, "No answer to the handshake yet; sending it again (${attempt + 1})")
+                            BluetoothConnectionManager.withSessionSocket(created) {
+                                aacpManager.sendPacket(aacpManager.createHandshakePacket())
+                                aacpManager.sendSetFeatureFlagsPacket()
+                                aacpManager.sendNotificationRequest()
+                            }
                         }
                     }
                     initialized = true
@@ -3317,7 +3345,10 @@ class AirPodsService : Service(), SharedPreferences.OnSharedPreferenceChangeList
     @SuppressLint("MissingPermission")
     private fun scheduleControlRetry(adapter: BluetoothAdapter, target: BluetoothDevice) {
         retryJob?.cancel()
-        val delayMillis = (1000L shl retryAttempts.coerceAtMost(5)).coerceAtMost(30_000L)
+        // The first retry goes almost at once: most failures are a connect that hung while the link
+        // came up. Later ones back off.
+        val delayMillis = if (retryAttempts == 0) FIRST_RETRY_MS
+            else (1000L shl (retryAttempts - 1).coerceAtMost(5)).coerceAtMost(30_000L)
         retryAttempts++
         retryJob = serviceScope.launch {
             delay(delayMillis + kotlin.random.Random.nextLong(0, 250))
