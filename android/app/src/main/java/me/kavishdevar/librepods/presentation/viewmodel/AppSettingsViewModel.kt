@@ -1,5 +1,6 @@
 package me.kavishdevar.librepods.presentation.viewmodel
 
+import me.kavishdevar.librepods.presentation.overlays.IslandLayout
 import android.app.Application
 import android.content.Context
 import android.content.SharedPreferences
@@ -38,6 +39,8 @@ data class AppSettingsUiState(
     val connectionSuccessful: Boolean = false,
     val showBottomSheetPopup: Boolean = true,
     val showIslandPopup: Boolean = true,
+    val islandWidth: Int = IslandLayout.DEFAULT_WIDTH,
+    val islandOffset: Int = IslandLayout.DEFAULT_OFFSET,
     val quickSettingsDialog: Boolean = false,
     val timeUntilFOSSPremiumExpiry: Long = 0L,
     val m3eEnabled: Boolean = false,
@@ -156,6 +159,8 @@ class AppSettingsViewModel(application: Application) : AndroidViewModel(applicat
                 connectionSuccessful = sharedPreferences.getBoolean("connection_successful", false),
                 showBottomSheetPopup = sharedPreferences.getBoolean("show_bottom_sheet_popup", true),
                 showIslandPopup = sharedPreferences.getBoolean("show_island_popup", true),
+                islandWidth = sharedPreferences.getInt(IslandLayout.WIDTH_KEY, IslandLayout.DEFAULT_WIDTH).coerceIn(IslandLayout.WIDTH_RANGE),
+                islandOffset = sharedPreferences.getInt(IslandLayout.OFFSET_KEY, IslandLayout.DEFAULT_OFFSET).coerceIn(IslandLayout.OFFSET_RANGE),
                 quickSettingsDialog = sharedPreferences.getString("qs_click_behavior", "cycle") == "dialog",
                 m3eEnabled = sharedPreferences.getBoolean("m3e_enabled", true),
                 appDesign = AppDesign.fromPreferences(sharedPreferences)
@@ -262,6 +267,18 @@ class AppSettingsViewModel(application: Application) : AndroidViewModel(applicat
     fun setShowIslandPopup(enabled: Boolean) {
         sharedPreferences.edit { putBoolean("show_island_popup", enabled) }
         _uiState.update { it.copy(showIslandPopup = enabled) }
+    }
+
+    fun setIslandWidth(dp: Int) {
+        val value = dp.coerceIn(IslandLayout.WIDTH_RANGE)
+        sharedPreferences.edit { putInt(IslandLayout.WIDTH_KEY, value) }
+        _uiState.update { it.copy(islandWidth = value) }
+    }
+
+    fun setIslandOffset(dp: Int) {
+        val value = dp.coerceIn(IslandLayout.OFFSET_RANGE)
+        sharedPreferences.edit { putInt(IslandLayout.OFFSET_KEY, value) }
+        _uiState.update { it.copy(islandOffset = value) }
     }
 
     fun setAppDesign(design: AppDesign) {

@@ -18,6 +18,9 @@
 
 package me.kavishdevar.librepods.presentation.screens
 
+import kotlin.math.roundToInt
+import me.kavishdevar.librepods.presentation.components.StyledSectionHeader
+import me.kavishdevar.librepods.presentation.overlays.IslandLayout
 import androidx.compose.material3.SheetValue
 import androidx.compose.material3.rememberBottomSheetState
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -359,6 +362,31 @@ fun AppSettingsScreen(
                     description = stringResource(R.string.preview_island_popup_description),
                     orientation = ListItemOrientation.Vertical,
                     onClick = { previewIsland.value?.forceClose(); previewIsland.value = previewIslandPopup(context) })
+            }
+
+            run {
+                // Size and position of the island; an island being previewed follows the sliders.
+                Spacer(modifier = Modifier.height(16.dp))
+                StyledSectionHeader(stringResource(R.string.island_size_position))
+                StyledSlider(
+                    label = stringResource(R.string.island_width),
+                    description = "${state.islandWidth} dp",
+                    value = state.islandWidth.toFloat(),
+                    onValueChange = { viewModel.setIslandWidth(it.roundToInt()); previewIsland.value?.refreshPlacement() },
+                    valueRange = IslandLayout.WIDTH_RANGE.first.toFloat()..IslandLayout.WIDTH_RANGE.last.toFloat(),
+                    snapPoints = listOf(IslandLayout.DEFAULT_WIDTH.toFloat()),
+                    independent = true
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+                StyledSlider(
+                    label = stringResource(R.string.island_offset),
+                    description = "${state.islandOffset} dp",
+                    value = state.islandOffset.toFloat(),
+                    onValueChange = { viewModel.setIslandOffset(it.roundToInt()); previewIsland.value?.refreshPlacement() },
+                    valueRange = IslandLayout.OFFSET_RANGE.first.toFloat()..IslandLayout.OFFSET_RANGE.last.toFloat(),
+                    snapPoints = listOf(IslandLayout.DEFAULT_OFFSET.toFloat()),
+                    independent = true
+                )
             }
 
             Spacer(modifier = Modifier.height(16.dp))

@@ -130,5 +130,8 @@
     <string name="recordings">녹음</string>
     <string name="recording_play">재생</string>
     <string name="recording_stop_playback">정지</string>
+    <string name="island_size_position">Dynamic Island 크기 및 위치</string>
+    <string name="island_width">폭</string>
+    <string name="island_offset">위에서의 거리</string>
 </resources>
 

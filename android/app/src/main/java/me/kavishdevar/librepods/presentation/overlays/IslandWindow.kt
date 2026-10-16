@@ -57,6 +57,26 @@ import kotlin.math.abs
 enum class IslandType { CONNECTED, TAKING_OVER, MOVED_TO_REMOTE, MOVED_TO_OTHER_DEVICE }
 
 /** Compact overlay with expandable details. Its touch area always follows the visible card. */
+/** The island's user-set size and position, kept in the app settings. */
+data class IslandLayout(val widthDp: Int, val offsetDp: Int) {
+    companion object {
+        const val WIDTH_KEY = "island_width_dp"
+        const val OFFSET_KEY = "island_offset_dp"
+        const val DEFAULT_WIDTH = 420
+        const val DEFAULT_OFFSET = 4
+        val WIDTH_RANGE = 240..420
+        val OFFSET_RANGE = 0..160
+
+        fun read(context: Context): IslandLayout {
+            val prefs = context.getSharedPreferences("settings", Context.MODE_PRIVATE)
+            return IslandLayout(
+                prefs.getInt(WIDTH_KEY, DEFAULT_WIDTH).coerceIn(WIDTH_RANGE),
+                prefs.getInt(OFFSET_KEY, DEFAULT_OFFSET).coerceIn(OFFSET_RANGE)
+            )
+        }
+    }
+}
+
 class IslandWindow(
     private val context: Context,
     private val observeDeviceEvents: Boolean = true,
@@ -228,12 +248,20 @@ class IslandWindow(
             WindowInsets.Type.systemBars() or WindowInsets.Type.displayCutout())
         val usableWidth = (metrics.bounds.width() - safe.left - safe.right - dp(24)).coerceAtLeast(1)
         availableHeight = (metrics.bounds.height() - safe.top - safe.bottom - dp(8)).coerceAtLeast(1)
+        val layout = IslandLayout.read(context)
         params?.apply {
-            width = minOf(dp(420), usableWidth)
+            width = minOf(dp(layout.widthDp), usableWidth)
             height = WindowManager.LayoutParams.WRAP_CONTENT
             x = (safe.left - safe.right) / 2
-            y = safe.top + dp(4)
+            y = safe.top + dp(layout.offsetDp)
         }
+    }
+
+    /** Applies a changed [IslandLayout] to the island on screen, as the settings sliders move. */
+    fun refreshPlacement() {
+        if (params == null) return
+        updatePlacement()
+        updateWindow()
     }
 
     private fun renderBattery() {

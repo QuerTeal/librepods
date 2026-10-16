@@ -131,6 +131,9 @@
     <string name="recordings">Recordings</string>
     <string name="recording_play">Play</string>
     <string name="recording_stop_playback">Stop</string>
+    <string name="island_size_position">Dynamic Island Size and Position</string>
+    <string name="island_width">Width</string>
+    <string name="island_offset">Distance from Top</string>
 </resources>
  
 
