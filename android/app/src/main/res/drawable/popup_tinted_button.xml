@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- iOS tinted button: a capsule of the tint at low opacity, with a pressed state. -->
+<ripple xmlns:android="http://schemas.android.com/apk/res/android" android:color="@color/popup_green_pressed">
+    <item>
+        <shape android:shape="rectangle">
+            <corners android:radius="24.5dp" />
+            <solid android:color="@color/popup_green_fill" />
+        </shape>
+    </item>
+</ripple>

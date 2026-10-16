@@ -139,5 +139,8 @@
     <string name="health_connect_denied">심박수 접근이 허용되지 않았습니다. 측정값을 저장하려면 Health Connect에서 허용하십시오.</string>
     <string name="health_connect_rationale_title">Health Connect의 심박수</string>
     <string name="health_connect_rationale">LibrePods는 Health Connect에 저장을 켠 경우에만, 측정하는 동안 AirPods가 측정한 심박수를 Health Connect에 기록합니다. 건강 데이터를 읽지는 않습니다. 데이터는 다른 곳으로 전송되지 않고 이 휴대폰의 Health Connect에만 저장되며, 언제든지 확인하거나 삭제하고 접근을 끌 수 있습니다.</string>
+    <string name="optimized_charge_popup_title">최적화된 배터리 충전</string>
+    <string name="optimized_charge_popup_subtitle">권장 한도까지 충전</string>
+    <string name="charge_fully_now">지금 완전히 충전</string>
 </resources>
 

@@ -87,7 +87,10 @@ class PopupWindow(
     context: Context,
     private val onCloseCallback: () -> Unit = {},
     model: AirPodsBase? = null,
-    private val observeDeviceEvents: Boolean = true
+    private val observeDeviceEvents: Boolean = true,
+    /** Whether the buds are held at the Optimized Charge Limit right now. */
+    private val optimizedChargeHeld: () -> Boolean = { false },
+    private val onChargeFully: () -> Unit = {}
 ) {
     private enum class Stage { InCase, TakenOut }
     private enum class CaseLight { Green, Amber }
@@ -113,6 +116,14 @@ class PopupWindow(
     private val rightColumn = BatteryColumn(root.findViewById(R.id.right_column), this.context.getString(R.string.right), renders.rightX, symbol = RIGHT_SYMBOL)
     private val caseColumn = BatteryColumn(root.findViewById(R.id.case_column), this.context.getString(R.string.case_alt), renders.caseX, renders.caseApartX)
     private val columns = listOf(budsColumn, leftColumn, rightColumn, caseColumn)
+    private val optimizedTitle: TextView = root.findViewById(R.id.optimized_title)
+    private val optimizedSubtitle: TextView = root.findViewById(R.id.optimized_subtitle)
+    private val chargeFullyButton: TextView = root.findViewById(R.id.charge_fully)
+    private val optimizedViews = listOf(optimizedTitle, optimizedSubtitle, chargeFullyButton)
+    private var optimizedShown = false
+    private var openedAtMillis = 0L
+    private var heightAnimator: android.animation.ValueAnimator? = null
+    private val optimizedRunnable = Runnable { refreshOptimized() }
 
     private val textColor = ContextCompat.getColor(this.context, R.color.popup_text)
     /** Every ring and bolt uses this one color, whatever the level or charging state. */
@@ -161,6 +172,11 @@ class PopupWindow(
         applyFonts()
         scrim.setOnClickListener { close() }
         root.findViewById<View>(R.id.close).setOnClickListener { close() }
+        chargeFullyButton.setOnClickListener {
+            onChargeFully()
+            showOptimized(false)
+            scheduleAutoClose(RESUME_DELAY_MS)
+        }
 
         card.listener = object : PopupCardLayout.Listener {
             override fun onTouchStarted() = pauseAutoClose()
@@ -231,6 +247,7 @@ class PopupWindow(
 
             if (observeDeviceEvents) registerReceiver()
             scheduleAutoClose(AUTO_CLOSE_DELAY_MS)
+            openedAtMillis = android.os.SystemClock.elapsedRealtime()
         } catch (e: Exception) {
             Log.e(TAG, "Error opening popup: ${e.message}")
             pauseAutoClose()
@@ -252,6 +269,50 @@ class PopupWindow(
         }
         showCaseLight(resolveCaseLight())
         bindBatteries(animate)
+        refreshOptimized()
+    }
+
+    /**
+     * Shows or hides the Optimized Charge Limit message. Like iOS, the card first arrives with
+     * just the levels and grows to add the message a moment later.
+     */
+    fun refreshOptimized() {
+        autoCloseHandler.removeCallbacks(optimizedRunnable)
+        if (!isShowing || isClosing) return
+        val want = optimizedChargeHeld()
+        if (want == optimizedShown) return
+        val wait = OPTIMIZED_REVEAL_DELAY_MS - (android.os.SystemClock.elapsedRealtime() - openedAtMillis)
+        if (want && wait > 0) {
+            autoCloseHandler.postDelayed(optimizedRunnable, wait)
+            return
+        }
+        showOptimized(want)
+    }
+
+    private fun showOptimized(show: Boolean) {
+        if (show == optimizedShown) return
+        optimizedShown = show
+        Log.i(TAG, "Optimized Charge Limit message ${if (show) "shown" else "hidden"}")
+        val compact = context.resources.getDimensionPixelSize(R.dimen.popup_card_height)
+        val expanded = ((RING_CENTER_Y_IN_CASE_DP + OPTIMIZED_CARD_BOTTOM_DP) * density).roundToInt()
+        heightAnimator?.cancel()
+        heightAnimator = android.animation.ValueAnimator.ofInt(card.height.takeIf { it > 0 } ?: compact,
+            if (show) expanded else compact).apply {
+            duration = OPTIMIZED_RESIZE_MS
+            interpolator = android.view.animation.PathInterpolator(0.2f, 0f, 0f, 1f)
+            addUpdateListener { card.updateLayoutParams<FrameLayout.LayoutParams> { height = it.animatedValue as Int } }
+            start()
+        }
+        optimizedViews.forEach { view ->
+            view.animate().cancel()
+            if (show) {
+                view.visibility = View.VISIBLE
+                view.animate().alpha(1f).setStartDelay(OPTIMIZED_RESIZE_MS / 2).setDuration(OPTIMIZED_RESIZE_MS).start()
+            } else {
+                view.animate().alpha(0f).setStartDelay(0).setDuration(OPTIMIZED_RESIZE_MS / 2)
+                    .withEndAction { if (!optimizedShown) view.visibility = View.GONE }.start()
+            }
+        }
     }
 
     fun updateBatteryStatus(batteryNotification: AirPodsNotifications.BatteryNotification) {
@@ -365,6 +426,8 @@ class PopupWindow(
     }
 
     private fun removeFromWindow() {
+        autoCloseHandler.removeCallbacks(optimizedRunnable)
+        heightAnimator?.cancel()
         content.animate().cancel()
         caseAnimation?.stop()
         caseAnimation = null
@@ -460,6 +523,16 @@ class PopupWindow(
             column.topInCase = (RING_CENTER_Y_IN_CASE_DP * density - ringSize / 2).roundToInt()
             column.topTakenOut = (RING_CENTER_Y_APART_DP * density - ringSize / 2).roundToInt()
         }
+
+        // The Optimized Charge Limit lines and button, measured from the ring centre (iPadOS 27).
+        optimizedTitle.firstBaselineToTopHeight = ((RING_CENTER_Y_IN_CASE_DP + OPTIMIZED_TITLE_BASELINE_DP) * density).roundToInt()
+        optimizedSubtitle.firstBaselineToTopHeight = ((RING_CENTER_Y_IN_CASE_DP + OPTIMIZED_SUBTITLE_BASELINE_DP) * density).roundToInt()
+        chargeFullyButton.updateLayoutParams<FrameLayout.LayoutParams> {
+            topMargin = ((RING_CENTER_Y_IN_CASE_DP + OPTIMIZED_BUTTON_TOP_DP) * density).roundToInt()
+            val side = (cardWidth * OPTIMIZED_BUTTON_SIDE_FRACTION).roundToInt()
+            leftMargin = side
+            rightMargin = side
+        }
     }
 
     private fun bindBatteries(animate: Boolean) {
@@ -479,6 +552,9 @@ class PopupWindow(
     private fun applyFonts() {
         nameView.typeface = AppFonts.pretendard(context, 700)
         columns.forEach { it.level.typeface = AppFonts.typeface(context, 400) }
+        optimizedTitle.typeface = AppFonts.typeface(context, 600)
+        optimizedSubtitle.typeface = AppFonts.typeface(context, 400)
+        chargeFullyButton.typeface = AppFonts.typeface(context, 600)
         // The baseline offsets were worked out for the inflated font; redo them for these.
         nameView.firstBaselineToTopHeight = (TITLE_BASELINE_DP * density).roundToInt()
         columns.forEach { it.level.firstBaselineToTopHeight = (LEVEL_BASELINE_DP * density).roundToInt() }
@@ -700,6 +776,14 @@ class PopupWindow(
         const val TITLE_BASELINE_DP = 61f
         const val RING_CENTER_Y_IN_CASE_DP = 277.5f
         const val RING_CENTER_Y_APART_DP = 280f
+        // Optimized Charge Limit, below the ring centre (measured on iPadOS 27).
+        const val OPTIMIZED_TITLE_BASELINE_DP = 79f
+        const val OPTIMIZED_SUBTITLE_BASELINE_DP = 100.5f
+        const val OPTIMIZED_BUTTON_TOP_DP = 121f
+        const val OPTIMIZED_CARD_BOTTOM_DP = 203.5f
+        const val OPTIMIZED_BUTTON_SIDE_FRACTION = 0.125f
+        const val OPTIMIZED_REVEAL_DELAY_MS = 700L
+        const val OPTIMIZED_RESIZE_MS = 400L
         const val LEVEL_BASELINE_DP = 21.5f
 
 

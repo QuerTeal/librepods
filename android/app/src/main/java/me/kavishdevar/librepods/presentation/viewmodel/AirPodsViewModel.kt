@@ -705,6 +705,8 @@ class AirPodsViewModel(
     }
 
     fun setDynamicEndOfCharge(enabled: Boolean) {
+        // A choice made here replaces a pending "Charge Fully Now" from the case popup.
+        sharedPreferences.edit { remove(AirPodsService.CHARGE_FULLY_PENDING_KEY) }
         setControlCommandBoolean(ControlCommandIdentifiers.DYNAMIC_END_OF_CHARGE, enabled)
     }
 
