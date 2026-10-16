@@ -186,6 +186,7 @@ fun AirPodsSettingsRoute(
             bottomPadding = bottomPadding,
 
             setControlCommandInt = viewModel::setControlCommandInt,
+            setControlCommandIntThrottled = viewModel::setControlCommandIntThrottled,
             setControlCommandBoolean = viewModel::setControlCommandBoolean,
 //        setControlCommandValue = viewModel::setControlCommandValue,
             setControlCommandByte = viewModel::setControlCommandByte,
@@ -234,6 +235,7 @@ fun AirPodsSettingsScreen(
         bottomPadding: Dp = 16.dp,
 
         setControlCommandInt: (AACPManager.Companion.ControlCommandIdentifiers, Int) -> Unit,
+        setControlCommandIntThrottled: (AACPManager.Companion.ControlCommandIdentifiers, Int) -> Unit = setControlCommandInt,
         setControlCommandBoolean: (AACPManager.Companion.ControlCommandIdentifiers, Boolean) -> Unit,
 //        setControlCommandValue: (AACPManager.Companion.ControlCommandIdentifiers, ByteArray) -> Unit,
         setControlCommandByte: (AACPManager.Companion.ControlCommandIdentifiers, Byte) -> Unit,
@@ -740,7 +742,7 @@ fun AirPodsSettingsScreen(
                     var draft by remember(caseVolume) { androidx.compose.runtime.mutableFloatStateOf(caseVolume!!.toFloat()) }
                     me.kavishdevar.librepods.presentation.components.StyledSlider(
                         label = stringResource(R.string.case_tone_volume), value = draft,
-                        onValueChange = { draft = it; setControlCommandInt(caseVolumeId, it.toInt()) },
+                        onValueChange = { draft = it; setControlCommandIntThrottled(caseVolumeId, it.toInt()) },
                         valueRange = 0f..100f, independent = true)
                 }
             }

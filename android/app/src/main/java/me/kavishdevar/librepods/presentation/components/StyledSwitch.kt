@@ -42,6 +42,7 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -116,6 +117,16 @@ fun StyledSwitch(
     val totalDrag = remember { mutableFloatStateOf(0f) }
     val tapThreshold = 10f
     val isFirstComposition = remember { mutableStateOf(true) }
+    // The drag state below is remembered once; it must read the current value and callback, and
+    // report a change only when the thumb crosses the middle, not on every movement.
+    val latestChecked by rememberUpdatedState(checked)
+    val latestOnCheckedChange by rememberUpdatedState(onCheckedChange)
+    val emitted = remember { mutableStateOf<Boolean?>(null) }
+    fun emit(value: Boolean) {
+        if (value == (emitted.value ?: latestChecked)) return
+        emitted.value = value
+        latestOnCheckedChange(value)
+    }
     LaunchedEffect(checked) {
         if (!isFirstComposition.value) {
             if (checked) {
@@ -168,10 +179,7 @@ fun StyledSwitch(
                                 animatedFraction.snapTo(newFraction)
                             }
                             totalDrag.floatValue += abs(delta)
-                            val newChecked = newFraction >= 0.5f
-                            if (newChecked != checked) {
-                                onCheckedChange(newChecked)
-                            }
+                            emit(newFraction >= 0.5f)
                             if ((oldFraction < 0.5f && newFraction >= 0.5f) || (oldFraction >= 0.5f && newFraction < 0.5f)) {
                                 haptics.performHapticFeedback(HapticFeedbackType.SegmentTick)
                             }
@@ -181,6 +189,7 @@ fun StyledSwitch(
                     startDragImmediately = true,
                     onDragStarted = {
                         totalDrag.floatValue = 0f
+                        emitted.value = null
                         scope.launch {
                             progressAnimation.animateTo(1f, progressAnimationSpec)
                         }
@@ -188,8 +197,8 @@ fun StyledSwitch(
                     onDragStopped = {
                         scope.launch {
                             if (totalDrag.floatValue < tapThreshold) {
-                                val newChecked = !checked
-                                onCheckedChange(newChecked)
+                                val newChecked = !latestChecked
+                                latestOnCheckedChange(newChecked)
                                 val snappedFraction = if (newChecked) 1f else 0f
                                 coroutineScope {
                                     launch { progressAnimation.animateTo(0f, progressAnimationSpec) }
@@ -197,7 +206,7 @@ fun StyledSwitch(
                                 }
                             } else {
                                 val snappedFraction = if (animatedFraction.value >= 0.5f) 1f else 0f
-                                onCheckedChange(snappedFraction >= 0.5f)
+                                emit(snappedFraction >= 0.5f)
                                 coroutineScope {
                                     launch { progressAnimation.animateTo(0f, progressAnimationSpec) }
                                     launch { animatedFraction.animateTo(snappedFraction, progressAnimationSpec) }

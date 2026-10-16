@@ -2,26 +2,28 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <application>
         <!-- Debug-only UI fixture. Callbacks never reach Bluetooth or AudioManager. -->
-        <activity android:name=".NativeUiPreviewActivity" android:exported="true"
+        <activity android:name="me.kavishdevar.librepods.NativeUiPreviewActivity" android:exported="true"
             android:label="LibrePods UI Preview" android:windowSoftInputMode="adjustResize"
             android:taskAffinity="me.kavishdevar.librepods.uiPreview" android:excludeFromRecents="true" />
     </application>
-    <instrumentation android:name=".NativeUiInstrumentation"
+    <instrumentation android:name="me.kavishdevar.librepods.NativeUiInstrumentation"
         android:targetPackage="${applicationId}" android:label="Native UI checks" />
-    <instrumentation android:name=".IslandUiInstrumentation"
+    <instrumentation android:name="me.kavishdevar.librepods.IslandUiInstrumentation"
         android:targetPackage="${applicationId}" android:label="Island UI checks" />
-    <instrumentation android:name=".ConnectionUiInstrumentation"
+    <instrumentation android:name="me.kavishdevar.librepods.ConnectionUiInstrumentation"
         android:targetPackage="${applicationId}" android:functionalTest="true" />
-    <instrumentation android:name=".FeatureUiInstrumentation"
+    <instrumentation android:name="me.kavishdevar.librepods.FeatureUiInstrumentation"
         android:targetPackage="${applicationId}" android:functionalTest="true" />
-    <instrumentation android:name=".DeviceSmokeInstrumentation"
+    <instrumentation android:name="me.kavishdevar.librepods.DeviceSmokeInstrumentation"
         android:targetPackage="${applicationId}" android:functionalTest="true" />
-    <instrumentation android:name=".SettingsUiInstrumentation"
+    <instrumentation android:name="me.kavishdevar.librepods.SettingsUiInstrumentation"
         android:targetPackage="${applicationId}" android:functionalTest="true" />
-    <instrumentation android:name=".EchoProbeInstrumentation"
+    <instrumentation android:name="me.kavishdevar.librepods.EchoProbeInstrumentation"
         android:targetPackage="${applicationId}" android:functionalTest="true" />
-    <instrumentation android:name=".QuickPanelLiveInstrumentation"
+    <instrumentation android:name="me.kavishdevar.librepods.QuickPanelLiveInstrumentation"
         android:targetPackage="${applicationId}" android:functionalTest="true" />
-    <instrumentation android:name=".HandoffInstrumentation"
+    <instrumentation android:name="me.kavishdevar.librepods.HandoffInstrumentation"
+        android:targetPackage="${applicationId}" android:functionalTest="true" />
+    <instrumentation android:name="me.kavishdevar.librepods.LatencyProbeInstrumentation"
         android:targetPackage="${applicationId}" android:functionalTest="true" />
 </manifest>

@@ -231,7 +231,7 @@ fun AccessibilitySettingsScreen(viewModel: AirPodsViewModel, navigateToPurchase:
             value = toneVolumeValue.floatValue,
             onValueChange = {
                 toneVolumeValue.floatValue = it
-                viewModel.setControlCommandByte(AACPManager.Companion.ControlCommandIdentifiers.CHIME_VOLUME, it.toInt().toByte())
+                viewModel.setControlCommandIntThrottled(AACPManager.Companion.ControlCommandIdentifiers.CHIME_VOLUME, it.toInt())
             },
             valueRange = 0f..100f,
             snapPoints = listOf(75f),

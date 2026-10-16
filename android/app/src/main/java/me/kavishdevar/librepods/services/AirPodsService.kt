@@ -123,6 +123,7 @@ import me.kavishdevar.librepods.data.combinedBudsBattery
 import me.kavishdevar.librepods.data.Capability
 import me.kavishdevar.librepods.data.CustomEq
 import me.kavishdevar.librepods.data.HealthConnectHeartRate
+import me.kavishdevar.librepods.data.hasReportedLevel
 import me.kavishdevar.librepods.data.HeartRateMonitor
 import me.kavishdevar.librepods.data.HeartRateStatus
 import me.kavishdevar.librepods.data.RecordingMonitor
@@ -3105,6 +3106,18 @@ class AirPodsService : Service(), SharedPreferences.OnSharedPreferenceChangeList
                         })
                         showIsland(this@AirPodsService,
                             batteryNotification.getBattery().combinedBudsBattery()?.level ?: -1)
+                        // If the buds still haven't reported battery or in-ear status, ask for them again.
+                        serviceScope.launch {
+                            delay(1500)
+                            if (connectionCoordinator.isCurrent(session) &&
+                                batteryNotification.getBattery().none { it.hasReportedLevel() } &&
+                                earStatusSession != connectionCoordinator.state.sessionId) {
+                                Log.i(TAG, "No battery or in-ear status yet; requesting notifications again")
+                                withContext(Dispatchers.IO) {
+                                    BluetoothConnectionManager.withSessionSocket(created) { aacpManager.sendNotificationRequest() }
+                                }
+                            }
+                        }
                         // The high heart rate alert needs the sensor running whenever the buds are connected.
                         if (sharedPreferences.getBoolean(HEART_RATE_ALERT_KEY, false)) startHeartRate()
                         // No unsolicited head-tracking probes or old-session delayed handshakes.
@@ -3119,12 +3132,23 @@ class AirPodsService : Service(), SharedPreferences.OnSharedPreferenceChangeList
                         // L2CAP is packet based and truncates reads into a short buffer; microphone
                         // stream packets can exceed 1 KB.
                         val buffer = ByteArray(4096)
+                        var resubscribed = false
                         try {
                         while (isActive && connectionCoordinator.isCurrent(session)) {
                             val count = created.inputStream.read(buffer)
                             if (count < 0) throw IOException("Control socket EOF")
                             if (count == 0) continue
                             val packet = buffer.copyOf(count)
+                            // The setup requests go out with the handshake, before the buds answer it, and
+                            // the buds sometimes drop them: then battery and in-ear status never arrive.
+                            // Ask again once the handshake is answered.
+                            if (!resubscribed && packet.size >= 4 && packet[0] == 0x01.toByte() && packet[2] == 0x04.toByte()) {
+                                resubscribed = true
+                                BluetoothConnectionManager.withSessionSocket(created) {
+                                    aacpManager.sendSetFeatureFlagsPacket()
+                                    aacpManager.sendNotificationRequest()
+                                }
+                            }
                             withContext(Dispatchers.Main.immediate) {
                                 if (!connectionCoordinator.isCurrent(session)) return@withContext
                                 try {

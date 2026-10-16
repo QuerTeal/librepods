@@ -522,6 +522,24 @@ class AirPodsViewModel(
         setControlCommandValue(identifier, byteArrayOf(value))
     }
 
+    private val pendingSliderWrites = mutableMapOf<ControlCommandIdentifiers, kotlinx.coroutines.Job>()
+    private val lastSliderWriteAt = mutableMapOf<ControlCommandIdentifiers, Long>()
+
+    /**
+     * For sliders: at most one write per 120 ms per setting, always ending with the latest value.
+     * A write per drag step queues up on the AirPods and slows every reply behind it.
+     */
+    fun setControlCommandIntThrottled(identifier: ControlCommandIdentifiers, value: Int) {
+        pendingSliderWrites.remove(identifier)?.cancel()
+        val wait = 120 - (android.os.SystemClock.uptimeMillis() - (lastSliderWriteAt[identifier] ?: 0L))
+        fun write() {
+            lastSliderWriteAt[identifier] = android.os.SystemClock.uptimeMillis()
+            setControlCommandInt(identifier, value)
+        }
+        if (wait <= 0) write()
+        else pendingSliderWrites[identifier] = viewModelScope.launch { kotlinx.coroutines.delay(wait); write() }
+    }
+
     fun observeControl(identifier: ControlCommandIdentifiers) {
         val listener = controlRepo.observe(identifier) { value ->
             if (identifier == ControlCommandIdentifiers.LISTENING_MODE_CONFIGS) {
