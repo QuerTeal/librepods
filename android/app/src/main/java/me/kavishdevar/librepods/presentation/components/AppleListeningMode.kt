@@ -21,6 +21,9 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -158,6 +161,8 @@ internal fun AppleListeningModeControl(
             fun strengthCenter(fraction: Float) = subLeft + restPillWidth / 2 + fraction * (subWidth - restPillWidth)
 
             var draggingStrength by remember { mutableStateOf(false) }
+            // A finger resting on the Adaptive slider, before (or without) dragging.
+            var pressingStrength by remember { mutableStateOf(false) }
             var liveStrength by remember { mutableStateOf<Float?>(null) }
             val strengthFraction = (liveStrength ?: (adaptiveStrength ?: 50) / 100f).coerceIn(0f, 1f)
 
@@ -172,12 +177,13 @@ internal fun AppleListeningModeControl(
             val pillCenter by animateFloatAsState(targetCenter,
                 if (draggingStrength) spring(stiffness = Spring.StiffnessHigh) else spring(dampingRatio = 0.75f, stiffness = Spring.StiffnessMediumLow),
                 label = "pillCenter")
-            val pillWidth by animateFloatAsState(if (draggingStrength) restWidth * 1.3f else restWidth,
+            val pillWidth by animateFloatAsState(if (draggingStrength || pressingStrength) restWidth * 1.3f else restWidth,
                 spring(dampingRatio = 0.7f, stiffness = Spring.StiffnessMedium), label = "pillWidth")
 
             val height = AppleMetrics.SegmentHeight
             val inset = AppleMetrics.SegmentInset
-            val held = draggingStrength
+            // Like iOS, the knob lifts into glass as soon as it's touched, not only once it moves.
+            val held = draggingStrength || pressingStrength
             val adaptivePillLight = selected == NoiseControlMode.ADAPTIVE && strengthEnabled && dark
             // The spring may overshoot; sizes and paddings need 0..1.
             val glassAnim by animateFloatAsState(if (held) 1f else 0f, spring(dampingRatio = 0.8f, stiffness = Spring.StiffnessMediumLow), label = "glass")
@@ -213,6 +219,23 @@ internal fun AppleListeningModeControl(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(height)
+                    .pointerInput(modes, strengthEnabled) {
+                        // Watches touches without consuming them, so taps and drags still reach their detectors.
+                        awaitEachGesture {
+                            val down = awaitFirstDown(requireUnconsumed = false)
+                            val g = geo
+                            if (latestMode != NoiseControlMode.ADAPTIVE || !strengthEnabled ||
+                                down.position.x !in g.subLeft..(g.subLeft + g.sub)) return@awaitEachGesture
+                            pressingStrength = true
+                            try {
+                                do {
+                                    val event = awaitPointerEvent(PointerEventPass.Final)
+                                } while (event.changes.any { it.pressed })
+                            } finally {
+                                pressingStrength = false
+                            }
+                        }
+                    }
                     .pointerInput(modes, strengthEnabled) {
                         detectTapGestures { offset ->
                             val g = geo

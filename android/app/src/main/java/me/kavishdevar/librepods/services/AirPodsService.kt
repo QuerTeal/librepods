@@ -2809,6 +2809,10 @@ class AirPodsService : Service(), SharedPreferences.OnSharedPreferenceChangeList
 
     private var earStatusSession: Long? = null
 
+    /** The buds' in-ear status from this session; empty until they report it, so it can't block anything. */
+    fun currentEarStatus(): List<Byte> =
+        if (earStatusSession == connectionCoordinator.state.sessionId) earDetectionNotification.status.take(2) else emptyList()
+
     private fun freshPodStatus(): BLEManager.AirPodsStatus? =
         bleManager.getMostRecentPodStatus()?.takeIf {
             SystemClock.elapsedRealtime() - it.lastSeen in 0L..15_000L

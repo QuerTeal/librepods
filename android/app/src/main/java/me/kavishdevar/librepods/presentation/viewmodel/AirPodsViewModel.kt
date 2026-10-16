@@ -422,7 +422,7 @@ class AirPodsViewModel(
 
                     AirPodsNotifications.AIRPODS_DISCONNECTED -> {
                         _uiState.update {
-                            it.copy(isLocallyConnected = false)
+                            it.copy(isLocallyConnected = false, earStatus = emptyList())
                         }
                     }
 
@@ -571,7 +571,7 @@ class AirPodsViewModel(
                 it.copy(
                     isLocallyConnected = service.controlConnectionState.value.phase == ControlConnectionPhase.READY,
                     battery = service.getBattery(),
-                    earStatus = service.earDetectionNotification.status.take(2),
+                    earStatus = service.currentEarStatus(),
                     ancMode = controlRepo.getValue(ControlCommandIdentifiers.LISTENING_MODE)?.get(0)?.toInt() ?: 1,
                     controlStates = controlRepo.getMap()
                 )
