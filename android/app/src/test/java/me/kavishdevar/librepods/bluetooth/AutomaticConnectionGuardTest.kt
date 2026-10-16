@@ -60,36 +60,18 @@ class AutomaticConnectionGuardTest {
         }
     }
 
-    @Test fun closingAndReopeningTheCaseReleasesALinkLossHold() {
+    // Seen on the user's phone: switching to the iPad with the case open lost the link; closing and
+    // reopening the case must leave the AirPods to the iPad.
+    @Test fun reopeningAfterSwitchingToAnotherHostStillHolds() {
         val guard = AutomaticConnectionGuard()
         guard.observeCase(true, 5)
         assertTrue(guard.claimControl(ConnectionIntent.ADVERTISEMENT, openCase))
         guard.localConnectionEstablished()
-        // The closed advertisement was missed, so the loss stays provisional and holds.
         guard.localConnectionLost(false, 1000)
+        guard.observeCase(false, 5, seenMillis = 13_000)
+        guard.observeCase(true, 6, seenMillis = 25_000)
         assertTrue(guard.paused)
-        guard.observeCase(false, 5, seenMillis = 60_000)
-        assertTrue(guard.paused)
-        guard.observeCase(true, 6, seenMillis = 70_000)
-        assertFalse(guard.paused)
-        assertTrue(guard.claimControl(ConnectionIntent.ADVERTISEMENT, openCase))
-        assertTrue(guard.claimControl(ConnectionIntent.EXISTING_LINK, openCase.copy(localLink = true)))
-    }
-
-    @Test fun aNewLidCounterReleasesTheHoldEvenIfTheCloseWasMissed() {
-        val guard = AutomaticConnectionGuard()
-        guard.observeCase(true, 5)
-        guard.localConnectionEstablished()
-        guard.localConnectionLost(false, 1000)
-        guard.observeCase(true, 6, seenMillis = 70_000)
-        assertFalse(guard.paused)
-    }
-
-    @Test fun aRestoredLinkLossHoldStillClearsOnANewOpening() {
-        val guard = AutomaticConnectionGuard(initiallyPaused = true, initiallyPausedByLinkLoss = true)
-        guard.observeCase(false, 5)
-        guard.observeCase(true, 6)
-        assertFalse(guard.paused)
+        assertFalse(guard.claimControl(ConnectionIntent.ADVERTISEMENT, openCase))
     }
 
     @Test fun reopeningAfterAHandoffStillHolds() {

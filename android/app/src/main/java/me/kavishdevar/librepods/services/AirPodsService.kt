@@ -422,10 +422,7 @@ class AirPodsService : Service(), SharedPreferences.OnSharedPreferenceChangeList
 
         sharedPreferences = getSharedPreferences("settings", MODE_PRIVATE)
         initializeConfig()
-        // The hold survives restarts with its cause, so a lost-link hold can still clear on a new case opening.
-        automaticConnectionGuard = AutomaticConnectionGuard(sharedPreferences.getBoolean("control_handoff_paused", false),
-            // Holds saved before the cause was recorded count as lost links: closing and reopening the case clears them.
-            sharedPreferences.getBoolean("control_hold_link_loss", true))
+        automaticConnectionGuard = AutomaticConnectionGuard(sharedPreferences.getBoolean("control_handoff_paused", false))
         _automaticReconnectPaused.value = automaticConnectionGuard.paused
 
         aacpManager = AACPManager()
@@ -1776,7 +1773,7 @@ class AirPodsService : Service(), SharedPreferences.OnSharedPreferenceChangeList
         _automaticReconnectPaused.value = automaticConnectionGuard.paused
         sharedPreferences.edit {
             putBoolean("control_handoff_paused", automaticConnectionGuard.paused)
-            putBoolean("control_hold_link_loss", automaticConnectionGuard.pausedByLinkLoss)
+            remove("control_hold_link_loss")
         }
     }
 
@@ -1823,7 +1820,7 @@ class AirPodsService : Service(), SharedPreferences.OnSharedPreferenceChangeList
             status.lastSeen)
         if (wasPaused && !automaticConnectionGuard.paused) {
             publishReconnectHold()
-            Log.i(TAG, "Automatic reconnect hold resolved by the case closing or reopening")
+            Log.i(TAG, "Automatic reconnect hold resolved by a fresh closed case")
         }
     }
 
