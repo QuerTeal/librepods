@@ -121,5 +121,14 @@
     <string name="high_heart_rate">높은 심박수</string>
     <string name="high_heart_rate_notification_text">심박수가 %1$d BPM으로 기준(%2$d BPM)보다 높습니다.</string>
     <string name="heart_rate_alert_no_permission">LibrePods 알림이 꺼져 있어 알림을 표시할 수 없습니다. 설정에서 알림을 허용하십시오.</string>
+    <string name="recorder">녹음기</string>
+    <string name="recorder_description">AirPods의 마이크로 녹음합니다. 녹음은 이 휴대폰에 저장됩니다.</string>
+    <string name="recorder_start">녹음 시작</string>
+    <string name="recorder_stop">녹음 중단</string>
+    <string name="recorder_connect">녹음하려면 AirPods를 연결하십시오.</string>
+    <string name="recorder_failed">녹음을 시작할 수 없습니다.</string>
+    <string name="recordings">녹음</string>
+    <string name="recording_play">재생</string>
+    <string name="recording_stop_playback">정지</string>
 </resources>
 

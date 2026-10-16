@@ -102,6 +102,7 @@ import android.app.KeyguardManager
 import android.os.PowerManager
 import me.kavishdevar.librepods.bluetooth.ControlConnectionPhase
 import me.kavishdevar.librepods.bluetooth.ControlConnectionState
+import me.kavishdevar.librepods.bluetooth.MicrophoneStream
 import me.kavishdevar.librepods.bluetooth.SensorDataWx
 import me.kavishdevar.librepods.bluetooth.SocketDeadline
 import me.kavishdevar.librepods.bluetooth.AudioTakeoverOptions
@@ -122,6 +123,9 @@ import me.kavishdevar.librepods.data.combinedBudsBattery
 import me.kavishdevar.librepods.data.Capability
 import me.kavishdevar.librepods.data.CustomEq
 import me.kavishdevar.librepods.data.HeartRateMonitor
+import me.kavishdevar.librepods.data.RecordingMonitor
+import me.kavishdevar.librepods.data.Recordings
+import me.kavishdevar.librepods.audio.AirPodsRecorder
 import me.kavishdevar.librepods.data.StemAction
 import me.kavishdevar.librepods.data.XposedRemotePrefProvider
 import me.kavishdevar.librepods.data.isHeadTrackingData
@@ -1153,6 +1157,10 @@ class AirPodsService : Service(), SharedPreferences.OnSharedPreferenceChangeList
                     HeadTracking.processPacket(headTracking)
                     processHeadTrackingData(headTracking)
                 }
+            }
+
+            override fun onMicrophoneFrames(frames: List<ByteArray>) {
+                recorder?.let { r -> frames.forEach(r::submit) }
             }
 
             override fun onHeartRateReceived(bpm: Int) {
@@ -3092,7 +3100,9 @@ class AirPodsService : Service(), SharedPreferences.OnSharedPreferenceChangeList
                         if (handleIncomingCallOnceConnected) handleIncomingCall()
                     }
                     val reader = launch(Dispatchers.IO) {
-                        val buffer = ByteArray(1024)
+                        // L2CAP is packet based and truncates reads into a short buffer; microphone
+                        // stream packets can exceed 1 KB.
+                        val buffer = ByteArray(4096)
                         try {
                         while (isActive && connectionCoordinator.isCurrent(session)) {
                             val count = created.inputStream.read(buffer)
@@ -3182,6 +3192,7 @@ class AirPodsService : Service(), SharedPreferences.OnSharedPreferenceChangeList
         endCallGestureDetection()
         HeartRateMonitor.off()
         cancelHeartRateAlert()
+        stopRecording()
         _controlConnectionState.value = connectionCoordinator.state
         updateNotificationContent(false)
         sendBroadcast(Intent(AirPodsNotifications.AIRPODS_DISCONNECTED).apply {
@@ -3227,6 +3238,7 @@ class AirPodsService : Service(), SharedPreferences.OnSharedPreferenceChangeList
         endCallGestureDetection()
         HeartRateMonitor.off()
         cancelHeartRateAlert()
+        stopRecording()
         _controlConnectionState.value = connectionCoordinator.state
         updateNotificationContent(false)
         if (!shutdown) sendBroadcast(Intent(AirPodsNotifications.AIRPODS_DISCONNECTED).setPackage(packageName))
@@ -3666,6 +3678,38 @@ class AirPodsService : Service(), SharedPreferences.OnSharedPreferenceChangeList
             .setOnlyAlertOnce(true)
             .setContentIntent(open)
             .build())
+    }
+
+    @Volatile private var recorder: AirPodsRecorder? = null
+
+    /** Records the AirPods' own microphone (firmware 8 and later) to a WAV file. */
+    fun startRecording(): Boolean {
+        if (recorder != null || connectionCoordinator.state.phase != ControlConnectionPhase.READY) return false
+        val file = Recordings.newFile(this)
+        val started = runCatching { AirPodsRecorder(file) { RecordingMonitor.level(it) } }
+            .onFailure { Log.e(TAG, "Recorder setup failed", it) }.getOrNull() ?: return false
+        recorder = started
+        if (!aacpManager.sendDataPacket(MicrophoneStream.startPacket())) {
+            recorder = null
+            started.finish().delete()
+            return false
+        }
+        RecordingMonitor.started()
+        return true
+    }
+
+    fun stopRecording() {
+        val active = recorder ?: return
+        recorder = null
+        if (connectionCoordinator.state.phase == ControlConnectionPhase.READY)
+            aacpManager.sendDataPacket(MicrophoneStream.stopPacket())
+        RecordingMonitor.stopped()
+        serviceScope.launch(Dispatchers.IO) {
+            val file = active.finish()
+            // Nothing arrived: don't keep an empty file.
+            if (file.length() <= 44) file.delete()
+            RecordingMonitor.changed()
+        }
     }
 
     private fun cancelHeartRateAlert() {

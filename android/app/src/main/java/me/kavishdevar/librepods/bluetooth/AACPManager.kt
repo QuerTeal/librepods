@@ -247,6 +247,7 @@ class AACPManager {
         fun onCustomEqReceived(customEq: CustomEq)
         fun onCapabilitiesReceived(capabilities: List<Capability>)
         fun onHeartRateReceived(bpm: Int) {}
+        fun onMicrophoneFrames(frames: List<ByteArray>) {}
     }
 
     fun parseStemPressResponse(data: ByteArray): Pair<StemPressType, StemPressBudType> {
@@ -473,6 +474,15 @@ class AACPManager {
                     return
                 }
                 callback?.onHeadTrackingReceived(packet)
+            }
+
+            MicrophoneStream.OPCODE -> {
+                val frames = MicrophoneStream.frames(packet)
+                if (frames.isNotEmpty()) {
+                    Log.v(TAG, "Microphone audio: ${packet.size} bytes, ${frames.size} frames")
+                    callback?.onMicrophoneFrames(frames)
+                }
+                else Log.d(TAG, "Microphone stream status: ${packet.toHexString()}")
             }
 
             Opcodes.PROXIMITY_KEYS_RSP -> {

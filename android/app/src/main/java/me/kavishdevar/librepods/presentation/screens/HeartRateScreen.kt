@@ -266,7 +266,7 @@ private fun Trace(samples: List<HeartRateSample>) {
 
 /** A plain card in the active design. */
 @Composable
-private fun CardSurface(content: @Composable () -> Unit) {
+internal fun CardSurface(content: @Composable () -> Unit) {
     if (LocalOneUI.current) {
         OneUICard { content() }
         return

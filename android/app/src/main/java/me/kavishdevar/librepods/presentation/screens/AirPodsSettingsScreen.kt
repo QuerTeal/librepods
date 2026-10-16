@@ -164,6 +164,7 @@ fun AirPodsSettingsRoute(
     navigateToMicrophoneSettings: () -> Unit,
     navigateToFeatureStatus: () -> Unit = {},
     navigateToHeartRate: () -> Unit = {},
+    navigateToRecorder: () -> Unit = {},
     section: String? = null,
     navigateToSection: (String) -> Unit = {}
 ) {
@@ -213,6 +214,7 @@ fun AirPodsSettingsRoute(
             navigateToMicrophoneSettings = navigateToMicrophoneSettings,
             navigateToFeatureStatus = navigateToFeatureStatus,
             navigateToHeartRate = navigateToHeartRate,
+            navigateToRecorder = navigateToRecorder,
             section = section,
             navigateToSection = navigateToSection,
 
@@ -262,6 +264,7 @@ fun AirPodsSettingsScreen(
         reconnectFromSavedMac: () -> Unit,
         navigateToFeatureStatus: () -> Unit = {},
         navigateToHeartRate: () -> Unit = {},
+        navigateToRecorder: () -> Unit = {},
         section: String? = null,
         navigateToSection: (String) -> Unit = {},
 ) {
@@ -308,7 +311,7 @@ fun AirPodsSettingsScreen(
             return k in when (section) {
                 null -> setOf("handoff_status", "play_update_banner", "battery", "name", "noise_control",
                     "apple_volume", "apple_nav", "upgrade_button", "about", "disconnect_button")
-                AirPodsSection.AUDIO -> setOf("audio", "connection", "microphone", "sleep_detection",
+                AirPodsSection.AUDIO -> setOf("audio", "connection", "microphone", "recorder", "sleep_detection",
                     "case_tones", "case_tone_volume", "off_listening")
                 AirPodsSection.CONTROLS -> setOf("press_hold", "call_control", "head_tracking")
                 AirPodsSection.HEARING -> setOf("hearing_health")
@@ -659,6 +662,19 @@ fun AirPodsSettingsScreen(
                     description = selectedModeText,
                     onClick = navigateToMicrophoneSettings
                 )
+            }
+
+            // The AirPods microphone stream needs firmware 8 or later, as upstream found.
+            if ((state.version3.firstOrNull()?.digitToIntOrNull() ?: 0) >= 8) {
+                entry("spacer_recorder") { Spacer(modifier = Modifier.height(sectionGap)) }
+                entry("recorder") {
+                    StyledListItem(
+                        name = stringResource(R.string.recorder),
+                        description = stringResource(R.string.recorder_description),
+                        onClick = navigateToRecorder,
+                        orientation = me.kavishdevar.librepods.presentation.components.ListItemOrientation.Vertical
+                    )
+                }
             }
 
             if (capabilities.contains(Capability.SLEEP_DETECTION)) {

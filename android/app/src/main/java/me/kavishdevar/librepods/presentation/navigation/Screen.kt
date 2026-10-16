@@ -38,6 +38,9 @@ sealed interface Screen: NavKey {
     data object HeartRate: Screen
 
     @Serializable
+    data object Recorder: Screen
+
+    @Serializable
     data object Accessibility: Screen
 
     @Serializable

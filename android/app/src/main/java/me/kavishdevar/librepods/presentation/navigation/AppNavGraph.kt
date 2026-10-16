@@ -26,6 +26,7 @@ import me.kavishdevar.librepods.presentation.screens.CallControlScreen
 import me.kavishdevar.librepods.presentation.screens.EqualizerRoute
 import me.kavishdevar.librepods.presentation.screens.HeadTrackingScreen
 import me.kavishdevar.librepods.presentation.screens.HeartRateScreen
+import me.kavishdevar.librepods.presentation.screens.RecorderScreen
 import me.kavishdevar.librepods.presentation.screens.LanguageScreen
 import me.kavishdevar.librepods.presentation.screens.HearingAidAdjustmentsScreen
 import me.kavishdevar.librepods.presentation.screens.HearingAidScreen
@@ -94,6 +95,7 @@ fun AppNavGraph(
             navigateToEqualizer = { navigate(Screen.Equalizer) },
             navigateToHeadTracking = { navigate(Screen.HeadTracking) },
             navigateToHeartRate = { navigate(Screen.HeartRate) },
+            navigateToRecorder = { navigate(Screen.Recorder) },
             navigateToAccessibility = { navigate(Screen.Accessibility) },
             navigateToVersion = { navigate(Screen.VersionInfo) },
             navigateToTroubleshooting = { navigate(Screen.Troubleshooting) },
@@ -174,6 +176,12 @@ fun AppNavGraph(
                         NavEntry(screen) {
                             if (!airPodsViewModel.isReady) LoadingScreen()
                             HeartRateScreen(airPodsViewModel)
+                        }
+
+                    Screen.Recorder ->
+                        NavEntry(screen) {
+                            if (!airPodsViewModel.isReady) LoadingScreen()
+                            RecorderScreen(airPodsViewModel)
                         }
 
                     Screen.Accessibility ->

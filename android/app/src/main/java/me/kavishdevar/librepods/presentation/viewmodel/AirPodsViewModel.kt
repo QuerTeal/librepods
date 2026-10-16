@@ -66,6 +66,9 @@ import me.kavishdevar.librepods.data.Capability
 import me.kavishdevar.librepods.data.ControlCommandRepository
 import me.kavishdevar.librepods.data.CustomEq
 import me.kavishdevar.librepods.data.HeartRateMonitor
+import me.kavishdevar.librepods.data.RecordingMonitor
+import me.kavishdevar.librepods.data.RecordingState
+import me.kavishdevar.librepods.data.Recordings
 import me.kavishdevar.librepods.data.HeartRateState
 import me.kavishdevar.librepods.data.HeartRateStatus
 import me.kavishdevar.librepods.data.StemAction
@@ -763,6 +766,18 @@ class AirPodsViewModel(
         sharedPreferences.edit { putInt(AirPodsService.HEART_RATE_ALERT_THRESHOLD_KEY, value) }
         _uiState.update { it.copy(heartRateAlertThreshold = value) }
     }
+
+    val recording: StateFlow<RecordingState> = RecordingMonitor.state
+
+    fun startRecording(): Boolean = !isDemoMode && service.startRecording()
+
+    fun stopRecording() {
+        if (!isDemoMode) service.stopRecording()
+    }
+
+    fun recordings(): List<java.io.File> = Recordings.list(appContext)
+
+    fun deleteRecording(file: java.io.File) = Recordings.delete(appContext, file)
 
     fun setATTCharacteristicValue(handle: ATTHandles, value: ByteArray) {
         if (isDemoMode) {

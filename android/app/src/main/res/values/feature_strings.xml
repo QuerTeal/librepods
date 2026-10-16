@@ -122,6 +122,15 @@
     <string name="high_heart_rate">High Heart Rate</string>
     <string name="high_heart_rate_notification_text">Your heart rate is %1$d BPM, above your %2$d BPM threshold.</string>
     <string name="heart_rate_alert_no_permission">Notifications are off for LibrePods, so alerts can’t be shown. Allow notifications in Settings.</string>
+    <string name="recorder">Recorder</string>
+    <string name="recorder_description">Records with the microphone in your AirPods. The recording is saved on this phone.</string>
+    <string name="recorder_start">Start Recording</string>
+    <string name="recorder_stop">Stop Recording</string>
+    <string name="recorder_connect">Connect your AirPods to record.</string>
+    <string name="recorder_failed">Couldn’t start recording.</string>
+    <string name="recordings">Recordings</string>
+    <string name="recording_play">Play</string>
+    <string name="recording_stop_playback">Stop</string>
 </resources>
  
 
