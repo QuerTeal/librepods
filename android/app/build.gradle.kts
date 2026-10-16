@@ -146,6 +146,7 @@ dependencies {
     implementation(libs.androidx.dynamicanimation)
     implementation(libs.androidx.compose.ui)
     implementation(libs.androidx.compose.material.icons.core)
+    implementation(libs.androidx.health.connect.client)
     implementation(libs.billing)
     debugImplementation(libs.androidx.compose.ui.tooling)
     implementation(libs.androidx.compose.foundation.layout)

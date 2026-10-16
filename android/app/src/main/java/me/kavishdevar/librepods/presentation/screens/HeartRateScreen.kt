@@ -69,6 +69,8 @@ import androidx.compose.ui.unit.sp
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import me.kavishdevar.librepods.R
+import androidx.health.connect.client.PermissionController
+import me.kavishdevar.librepods.data.HealthConnectHeartRate
 import me.kavishdevar.librepods.data.HeartRateMonitor
 import me.kavishdevar.librepods.data.HeartRateSample
 import me.kavishdevar.librepods.data.HeartRateState
@@ -125,6 +127,9 @@ fun HeartRateScreen(viewModel: AirPodsViewModel) {
         )
 
         Spacer(modifier = Modifier.height(16.dp))
+        HealthConnectToggle(enabled = state.heartRateHealthConnect, onChange = viewModel::setHeartRateHealthConnect)
+
+        Spacer(modifier = Modifier.height(16.dp))
         StyledToggle(
             label = stringResource(R.string.heart_rate_alert),
             description = stringResource(R.string.heart_rate_alert_description),
@@ -170,6 +175,46 @@ fun HeartRateScreen(viewModel: AirPodsViewModel) {
         )
 
         Spacer(modifier = Modifier.height(screenBottomPadding(material = 0.dp)))
+    }
+}
+
+/**
+ * Saving to Health Connect needs its own write permission, asked for the first time it's
+ * turned on; turning it on without the permission keeps it off.
+ */
+@Composable
+private fun HealthConnectToggle(enabled: Boolean, onChange: (Boolean) -> Unit) {
+    val context = LocalContext.current
+    val available = remember { HealthConnectHeartRate.available(context) }
+    var granted by remember { mutableStateOf(false) }
+    var denied by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { granted = HealthConnectHeartRate.granted(context) }
+    val request = rememberLauncherForActivityResult(PermissionController.createRequestPermissionResultContract()) { result ->
+        granted = HealthConnectHeartRate.PERMISSION in result
+        denied = !granted
+        onChange(granted)
+    }
+    StyledToggle(
+        label = stringResource(R.string.health_connect_save),
+        description = stringResource(if (available) R.string.health_connect_save_description else R.string.health_connect_unavailable),
+        checked = enabled && granted,
+        enabled = available,
+        onCheckedChange = {
+            denied = false
+            when {
+                !it -> onChange(false)
+                granted -> onChange(true)
+                else -> request.launch(setOf(HealthConnectHeartRate.PERMISSION))
+            }
+        }
+    )
+    if (denied) {
+        Text(
+            text = stringResource(R.string.health_connect_denied),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.error,
+            modifier = Modifier.padding(horizontal = if (LocalOneUI.current) 18.dp else 20.dp, vertical = 4.dp)
+        )
     }
 }
 

@@ -134,6 +134,12 @@
     <string name="island_size_position">Dynamic Island Size and Position</string>
     <string name="island_width">Width</string>
     <string name="island_offset">Distance from Top</string>
+    <string name="health_connect_save">Save to Health Connect</string>
+    <string name="health_connect_save_description">Saves heart rate measured by your AirPods to Health Connect, so Samsung Health and other health apps can show it.</string>
+    <string name="health_connect_unavailable">Health Connect isn’t available on this phone.</string>
+    <string name="health_connect_denied">Heart rate access was not allowed. Allow it in Health Connect to save measurements.</string>
+    <string name="health_connect_rationale_title">Heart Rate in Health Connect</string>
+    <string name="health_connect_rationale">LibrePods writes the heart rate your AirPods measure to Health Connect, only while you measure and only if you turned on Save to Health Connect. It doesn’t read any health data. Nothing is sent anywhere else: the data stays on this phone in Health Connect, where you can review or delete it and turn off access at any time.</string>
 </resources>
  
 

@@ -51,6 +51,9 @@
 <!--        android:maxSdkVersion="30" />-->
     <uses-permission android:name="com.android.vending.BILLING" />
 
+    <!-- Saving AirPods heart rate to Health Connect, only after the user allows it -->
+    <uses-permission android:name="android.permission.health.WRITE_HEART_RATE" />
+
     <application
         android:name=".LibrePodsApplication"
         android:allowBackup="true"
@@ -135,6 +138,22 @@
         <activity android:name=".RemoteCameraActivity" android:exported="false" />
         <activity android:name=".LastConnectionLocationActivity" android:exported="false" />
         <activity android:name=".AudioMonitorActivity" android:exported="false" />
+        <!-- Health Connect shows this when the user asks why LibrePods wants heart rate access -->
+        <activity android:name=".HealthPermissionsActivity" android:exported="true">
+            <intent-filter>
+                <action android:name="androidx.health.ACTION_SHOW_PERMISSIONS_RATIONALE" />
+            </intent-filter>
+        </activity>
+        <activity-alias
+            android:name="ViewPermissionUsageActivity"
+            android:exported="true"
+            android:permission="android.permission.START_VIEW_PERMISSION_USAGE"
+            android:targetActivity=".HealthPermissionsActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW_PERMISSION_USAGE" />
+                <category android:name="android.intent.category.HEALTH_PERMISSIONS" />
+            </intent-filter>
+        </activity-alias>
         <service
             android:name=".services.AirPodsQSService"
             android:exported="true"
@@ -178,4 +197,8 @@
         </provider>
     </application>
 
+    <queries>
+        <!-- Health Connect's app on Android 13 -->
+        <package android:name="com.google.android.apps.healthdata" />
+    </queries>
 </manifest>

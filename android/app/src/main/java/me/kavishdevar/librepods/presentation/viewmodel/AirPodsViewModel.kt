@@ -65,6 +65,7 @@ import me.kavishdevar.librepods.data.BatteryStatus
 import me.kavishdevar.librepods.data.Capability
 import me.kavishdevar.librepods.data.ControlCommandRepository
 import me.kavishdevar.librepods.data.CustomEq
+import me.kavishdevar.librepods.data.HealthConnectHeartRate
 import me.kavishdevar.librepods.data.HeartRateMonitor
 import me.kavishdevar.librepods.data.RecordingMonitor
 import me.kavishdevar.librepods.data.RecordingState
@@ -104,6 +105,7 @@ data class AirPodsUiState(
     val headGesturesEnabled: Boolean = true,
 
     val heartRateAlert: Boolean = false,
+    val heartRateHealthConnect: Boolean = false,
     val heartRateAlertThreshold: Int = HeartRateMonitor.DEFAULT_ALERT_THRESHOLD,
 
     val eqData: FloatArray = floatArrayOf(),
@@ -609,6 +611,7 @@ class AirPodsViewModel(
         _uiState.update {
             it.copy(
                 heartRateAlert = heartRateAlert,
+                heartRateHealthConnect = sharedPreferences.getBoolean(HealthConnectHeartRate.ENABLED_KEY, false),
                 heartRateAlertThreshold = heartRateAlertThreshold,
                 offListeningMode = offListeningModeEnabled,
                 automaticEarDetectionEnabled = automaticEarDetectionEnabled,
@@ -759,6 +762,11 @@ class AirPodsViewModel(
         sharedPreferences.edit { putBoolean(AirPodsService.HEART_RATE_ALERT_KEY, enabled) }
         _uiState.update { it.copy(heartRateAlert = enabled) }
         if (enabled && heartRate.value.status == HeartRateStatus.OFF) startHeartRate()
+    }
+
+    fun setHeartRateHealthConnect(enabled: Boolean) {
+        sharedPreferences.edit { putBoolean(HealthConnectHeartRate.ENABLED_KEY, enabled) }
+        _uiState.update { it.copy(heartRateHealthConnect = enabled) }
     }
 
     fun setHeartRateAlertThreshold(bpm: Int) {

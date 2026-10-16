@@ -122,7 +122,9 @@ import me.kavishdevar.librepods.data.BatteryStatus
 import me.kavishdevar.librepods.data.combinedBudsBattery
 import me.kavishdevar.librepods.data.Capability
 import me.kavishdevar.librepods.data.CustomEq
+import me.kavishdevar.librepods.data.HealthConnectHeartRate
 import me.kavishdevar.librepods.data.HeartRateMonitor
+import me.kavishdevar.librepods.data.HeartRateStatus
 import me.kavishdevar.librepods.data.RecordingMonitor
 import me.kavishdevar.librepods.data.Recordings
 import me.kavishdevar.librepods.audio.AirPodsRecorder
@@ -1164,7 +1166,17 @@ class AirPodsService : Service(), SharedPreferences.OnSharedPreferenceChangeList
             }
 
             override fun onHeartRateReceived(bpm: Int) {
+                if (HeartRateMonitor.state.value.status == HeartRateStatus.OFF) {
+                    // The buds keep reporting from an earlier session (the app restarted while
+                    // measuring); turn the sensor off instead of showing or saving the readings.
+                    if (!staleHeartRateStopped) {
+                        staleHeartRateStopped = true
+                        aacpManager.setHeartRateReporting(heartRateService(), false)
+                    }
+                    return
+                }
                 HeartRateMonitor.add(bpm)
+                HealthConnectHeartRate.add(this@AirPodsService, bpm, airpodsInstance?.model?.name)
                 checkHeartRateAlert(bpm)
             }
 
@@ -3191,6 +3203,7 @@ class AirPodsService : Service(), SharedPreferences.OnSharedPreferenceChangeList
         callGestureGuard.invalidate()
         endCallGestureDetection()
         HeartRateMonitor.off()
+        HealthConnectHeartRate.flush(this)
         cancelHeartRateAlert()
         stopRecording()
         _controlConnectionState.value = connectionCoordinator.state
@@ -3237,6 +3250,7 @@ class AirPodsService : Service(), SharedPreferences.OnSharedPreferenceChangeList
         callGestureGuard.invalidate()
         endCallGestureDetection()
         HeartRateMonitor.off()
+        HealthConnectHeartRate.flush(this)
         cancelHeartRateAlert()
         stopRecording()
         _controlConnectionState.value = connectionCoordinator.state
@@ -3637,8 +3651,11 @@ class AirPodsService : Service(), SharedPreferences.OnSharedPreferenceChangeList
     private fun heartRateService() =
         SensorDataWx.heartRateService(sharedPreferences.getString("airpods_version3", "") ?: "")
 
+    private var staleHeartRateStopped = false
+
     fun startHeartRate(): Boolean {
         if (!supportsHeartRate || connectionCoordinator.state.phase != ControlConnectionPhase.READY) return false
+        staleHeartRateStopped = false
         val sent = aacpManager.setHeartRateReporting(heartRateService(), true)
         if (sent) HeartRateMonitor.measuring()
         return sent
@@ -3648,6 +3665,7 @@ class AirPodsService : Service(), SharedPreferences.OnSharedPreferenceChangeList
         if (connectionCoordinator.state.phase == ControlConnectionPhase.READY)
             aacpManager.setHeartRateReporting(heartRateService(), false)
         HeartRateMonitor.off()
+        HealthConnectHeartRate.flush(this)
         cancelHeartRateAlert()
     }
 

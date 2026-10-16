@@ -133,5 +133,11 @@
     <string name="island_size_position">Dynamic Island 크기 및 위치</string>
     <string name="island_width">폭</string>
     <string name="island_offset">위에서의 거리</string>
+    <string name="health_connect_save">Health Connect에 저장</string>
+    <string name="health_connect_save_description">AirPods로 측정한 심박수를 Health Connect에 저장해 삼성 헬스 등 건강 앱에서 볼 수 있게 합니다.</string>
+    <string name="health_connect_unavailable">이 휴대폰에서는 Health Connect를 사용할 수 없습니다.</string>
+    <string name="health_connect_denied">심박수 접근이 허용되지 않았습니다. 측정값을 저장하려면 Health Connect에서 허용하십시오.</string>
+    <string name="health_connect_rationale_title">Health Connect의 심박수</string>
+    <string name="health_connect_rationale">LibrePods는 Health Connect에 저장을 켠 경우에만, 측정하는 동안 AirPods가 측정한 심박수를 Health Connect에 기록합니다. 건강 데이터를 읽지는 않습니다. 데이터는 다른 곳으로 전송되지 않고 이 휴대폰의 Health Connect에만 저장되며, 언제든지 확인하거나 삭제하고 접근을 끌 수 있습니다.</string>
 </resources>
 
