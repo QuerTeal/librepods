@@ -48,7 +48,8 @@ android {
     compileSdk = 37
 
     defaultConfig {
-        applicationId = "me.kavishdevar.librepods"
+        // The fork installs as its own app, so the Play Store build never updates or replaces it.
+        applicationId = "io.github.querteal.librepods"
         targetSdk = 37
         versionCode = 76
         versionName = appVersionName
