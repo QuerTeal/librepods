@@ -37,17 +37,19 @@ fun AboutCard(
     version: String?,
     navigateToVersion: () -> Unit
 ) {
+    // Empty until the buds send their information right after connecting.
+    val (case, left, right) = List(3) { serialNumbers.getOrNull(it).orEmpty() }
     val serialNumbers = when (LocalDesignSystem.current) {
         DesignSystem.Apple -> listOf(
-            serialNumbers[0],
-            "􀀛 ${serialNumbers[1]}",
-            "􀀧 ${serialNumbers[2]}"
+            case,
+            "􀀛 $left",
+            "􀀧 $right"
         )
 
         DesignSystem.Material -> listOf(
-            serialNumbers[0],
-            stringResource(R.string.left) + " " + serialNumbers[1],
-            stringResource(R.string.right) + " " + serialNumbers[2],
+            case,
+            stringResource(R.string.left) + " " + left,
+            stringResource(R.string.right) + " " + right,
         )
     }
 

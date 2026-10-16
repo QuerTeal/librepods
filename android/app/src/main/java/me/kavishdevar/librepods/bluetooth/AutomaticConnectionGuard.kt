@@ -22,11 +22,23 @@ class AutomaticConnectionGuard(initiallyPaused: Boolean = false) {
     private var lastCaseOpen: Boolean? = null
     private var lastCaseCounter: Int? = null
     private var pendingCaseLossMillis: Long? = null
+    /** Paused only because this phone lost the link, not because another host took over. */
+    private var pausedByLinkLoss = false
 
     fun observeCase(open: Boolean, counter: Int?, bothSeated: Boolean = true, seenMillis: Long = 0) {
         val newOpening = open && (lastCaseOpen != true ||
             (counter != null && lastCaseCounter != null && counter != lastCaseCounter))
         if (newOpening) caseGeneration++
+        // Closing the case and opening it again is a fresh start on this phone: it releases a
+        // hold that only a lost link caused. The same opening (a connect loop with the case left
+        // open) and handoffs to another host stay held.
+        // A changed lid counter counts too, in case the closed advertisement was missed.
+        if (newOpening && pausedByLinkLoss) {
+            paused = false
+            revision++
+            pausedByLinkLoss = false
+            pendingCaseLossMillis = null
+        }
         if (!open) automaticLease = false
         // Some phones deliver profile loss just before the case's closed advertisement.
         // Only a fresh, seated, closed case resolves that provisional loss; an external
@@ -35,6 +47,7 @@ class AutomaticConnectionGuard(initiallyPaused: Boolean = false) {
             paused = false
             revision++
             pendingCaseLossMillis = null
+            pausedByLinkLoss = false
         }
         lastCaseOpen = open
         if (counter != null) lastCaseCounter = counter
@@ -48,15 +61,16 @@ class AutomaticConnectionGuard(initiallyPaused: Boolean = false) {
             revision++
             automaticLease = false
             pendingCaseLossMillis = nowMillis
+            pausedByLinkLoss = true
         }
         if (established || expectedClosedCase) automaticLease = false
         established = false
     }
 
-    fun pause() { paused = true; revision++; automaticLease = false; pendingCaseLossMillis = null }
+    fun pause() { paused = true; revision++; automaticLease = false; pendingCaseLossMillis = null; pausedByLinkLoss = false }
 
     /** Only an explicit request on this phone clears the persisted hold. */
-    fun resumeForUser() { paused = false; revision++; automaticLease = true; pendingCaseLossMillis = null }
+    fun resumeForUser() { paused = false; revision++; automaticLease = true; pendingCaseLossMillis = null; pausedByLinkLoss = false }
 
     fun claimControl(intent: ConnectionIntent, evidence: ConnectionEvidence): Boolean {
         if (intent == ConnectionIntent.USER) { resumeForUser(); return true }

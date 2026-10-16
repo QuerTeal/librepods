@@ -94,8 +94,22 @@ class CaseAdvertisementParserTest {
         assertNull(CaseAdvertisementParser.parse(advertisement(), ByteArray(15)))
     }
 
+    // Seen on AirPods Pro 3 (firmware 9442752) while connected: byte 10 is 01.
+    @Test fun acceptsTheConnectedFlag() {
+        val report = CaseAdvertisementParser.parse(advertisement(byteArrayOf(
+            0x29, 0x20, 0x07, 0x54, 0xd0.toByte(), 0xd0.toByte(), 0x5a, 0x86.toByte(),
+            0, 0, 1, 0, 0x57, 0x83.toByte(), 0x0e, 0
+        )), key)!!
+        assertTrue(report.lidOpen)
+        assertEquals(7, report.lidCounter)
+        assertEquals(84, report.case.level)
+        assertEquals(80, report.left.level)
+        assertTrue(report.left.charging)
+        assertNull(CaseAdvertisementParser.parse(advertisement(closed.copyOf().apply { this[10] = 0x80.toByte() }), key))
+    }
+
     @Test fun rejectsUnexpectedHeaderAndReservedBytes() {
-        for (offset in listOf(0, 1, 8, 10, 11)) {
+        for (offset in listOf(0, 1, 8, 11)) {
             assertNull("offset $offset", CaseAdvertisementParser.parse(advertisement(
                 closed.copyOf().apply { this[offset] = (this[offset].toInt() xor 1).toByte() }
             ), key))

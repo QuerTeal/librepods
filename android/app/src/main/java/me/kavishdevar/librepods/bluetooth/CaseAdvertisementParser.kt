@@ -39,8 +39,9 @@ object CaseAdvertisementParser {
             return null
         }
         // Firmware variants at 6/7 and the rolling counter at 12..15 are not identity constants.
+        // Byte 10 is a 0/1 flag: AirPods Pro 3 report 01 while connected to a phone.
         if (block[0] != 0x29.toByte() || block[1] != 0x20.toByte() ||
-            block[8] != 0.toByte() || block[10] != 0.toByte() || block[11] != 0.toByte()) return null
+            block[8] != 0.toByte() || (block[10].toInt() and 0xff) > 1 || block[11] != 0.toByte()) return null
         val case = battery(block[3]) ?: return null
         val left = battery(block[4]) ?: return null
         val right = battery(block[5]) ?: return null

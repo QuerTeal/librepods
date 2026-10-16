@@ -318,6 +318,23 @@ class BLEManager(private val context: Context) {
         return Pair(charging, level.takeIf { it in 0..100 })
     }
 
+    // Diagnostics: what the scanner heard from AirPods, summarised every 30 s.
+    private val heardTypes = mutableMapOf<String, Int>()
+    private var heardCase = 0
+    private var heardPods = 0
+    private var caseUndecoded = 0
+    private var podsUnverified = 0
+    private var lastSummaryMillis = 0L
+
+    private fun summarize() {
+        val now = SystemClock.elapsedRealtime()
+        if (now - lastSummaryMillis < 30_000) return
+        lastSummaryMillis = now
+        if (heardCase + heardPods > 0) Log.d(TAG, "Heard in 30 s: case=$heardCase (undecoded $caseUndecoded), " +
+            "pods=$heardPods (unverified $podsUnverified); Apple types ${heardTypes.entries.sortedByDescending { it.value }.take(4).joinToString { "${it.key}x${it.value}" }}")
+        heardTypes.clear(); heardCase = 0; heardPods = 0; caseUndecoded = 0; podsUnverified = 0
+    }
+
     private fun processScanResult(result: ScanResult) {
         try {
             val scanRecord = result.scanRecord ?: return
@@ -327,6 +344,11 @@ class BLEManager(private val context: Context) {
             val fromCase = CaseAdvertisementParser.isCaseAdvertisement(manufacturerData)
             val fromPods = manufacturerData.size == 27 && manufacturerData[0] == 7.toByte() &&
                 manufacturerData[1] == 25.toByte() && manufacturerData[2] == 1.toByte()
+            val typeKey = "%02x/%d".format(manufacturerData.getOrNull(0)?.toInt()?.and(0xff) ?: -1, manufacturerData.size)
+            heardTypes[typeKey] = (heardTypes[typeKey] ?: 0) + 1
+            if (fromCase) heardCase++
+            if (fromPods) heardPods++
+            summarize()
             if (!fromCase && !fromPods) return
 
             val irk = getIrkFromPreferences()
@@ -348,12 +370,19 @@ class BLEManager(private val context: Context) {
             if (encryptionKey != null) trustedEncryptionKey = encryptionKey.copyOf()
 
             val caseReport = if (fromCase) {
-                if (encryptionKey == null) return
-                CaseAdvertisementParser.parse(manufacturerData, encryptionKey) ?: return
+                if (encryptionKey == null) { caseUndecoded++; return }
+                CaseAdvertisementParser.parse(manufacturerData, encryptionKey) ?: run {
+                    caseUndecoded++
+                    if (caseUndecoded == 1) decryptLastBytes(manufacturerData.copyOfRange(3, 19), encryptionKey)?.let {
+                        Log.d(TAG, "Case advertisement did not decode; block ${it.joinToString(" ") { b -> "%02x".format(b) }}")
+                    }
+                    return
+                }
             } else null
 
             if (!fromCase && !verifiedAddresses.contains(address)) {
                 if (!BluetoothCryptography.verifyRPA(address, irk!!)) {
+                    podsUnverified++
                     return
                 }
                 if (verifiedAddresses.size >= 64) verifiedAddresses.clear()

@@ -60,6 +60,42 @@ class AutomaticConnectionGuardTest {
         }
     }
 
+    @Test fun closingAndReopeningTheCaseReleasesALinkLossHold() {
+        val guard = AutomaticConnectionGuard()
+        guard.observeCase(true, 5)
+        assertTrue(guard.claimControl(ConnectionIntent.ADVERTISEMENT, openCase))
+        guard.localConnectionEstablished()
+        // The closed advertisement was missed, so the loss stays provisional and holds.
+        guard.localConnectionLost(false, 1000)
+        assertTrue(guard.paused)
+        guard.observeCase(false, 5, seenMillis = 60_000)
+        assertTrue(guard.paused)
+        guard.observeCase(true, 6, seenMillis = 70_000)
+        assertFalse(guard.paused)
+        assertTrue(guard.claimControl(ConnectionIntent.ADVERTISEMENT, openCase))
+        assertTrue(guard.claimControl(ConnectionIntent.EXISTING_LINK, openCase.copy(localLink = true)))
+    }
+
+    @Test fun aNewLidCounterReleasesTheHoldEvenIfTheCloseWasMissed() {
+        val guard = AutomaticConnectionGuard()
+        guard.observeCase(true, 5)
+        guard.localConnectionEstablished()
+        guard.localConnectionLost(false, 1000)
+        guard.observeCase(true, 6, seenMillis = 70_000)
+        assertFalse(guard.paused)
+    }
+
+    @Test fun reopeningAfterAHandoffStillHolds() {
+        val guard = AutomaticConnectionGuard()
+        guard.observeCase(true, 5)
+        guard.localConnectionEstablished()
+        guard.localConnectionLost(false, 1000)
+        guard.pause() // the other host confirmed it took over
+        guard.observeCase(false, 5, seenMillis = 60_000)
+        guard.observeCase(true, 6, seenMillis = 70_000)
+        assertTrue(guard.paused)
+    }
+
     @Test fun newCaseOpeningDoesNotOverrideAnExternalHandoff() {
         val guard = AutomaticConnectionGuard()
         guard.pause()
