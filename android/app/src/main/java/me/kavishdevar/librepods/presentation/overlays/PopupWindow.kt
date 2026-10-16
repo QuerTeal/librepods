@@ -121,6 +121,8 @@ class PopupWindow(
     private val chargeFullyButton: TextView = root.findViewById(R.id.charge_fully)
     private val optimizedViews = listOf(optimizedTitle, optimizedSubtitle, chargeFullyButton)
     private var optimizedShown = false
+    /** The limit the buds' rings currently mark, or null for plain rings. */
+    private var ringLimit: Int? = null
     private var openedAtMillis = 0L
     private var heightAnimator: android.animation.ValueAnimator? = null
     private val optimizedRunnable = Runnable { refreshOptimized() }
@@ -175,6 +177,7 @@ class PopupWindow(
         chargeFullyButton.setOnClickListener {
             onChargeFully()
             showOptimized(false)
+            bindBatteries(animate = true)
             scheduleAutoClose(RESUME_DELAY_MS)
         }
 
@@ -280,6 +283,7 @@ class PopupWindow(
         autoCloseHandler.removeCallbacks(optimizedRunnable)
         if (!isShowing || isClosing) return
         val want = optimizedChargeHeld()
+        if ((OPTIMIZED_LIMIT.takeIf { want }) != ringLimit) bindBatteries(animate = true)
         if (want == optimizedShown) return
         val wait = OPTIMIZED_REVEAL_DELAY_MS - (android.os.SystemClock.elapsedRealtime() - openedAtMillis)
         if (want && wait > 0) {
@@ -539,12 +543,19 @@ class PopupWindow(
         val left = batteries.find { it.component == BatteryComponent.LEFT }
         val right = batteries.find { it.component == BatteryComponent.RIGHT }
         val case = batteries.find { it.component == BatteryComponent.CASE }
-        leftColumn.bind(left, animate)
-        rightColumn.bind(right, animate)
+        // The buds' rings mark the Optimized Charge Limit while they're held at it.
+        val limit = OPTIMIZED_LIMIT.takeIf { optimizedChargeHeld() }
+        ringLimit = limit
+        leftColumn.bind(left, animate, limit)
+        rightColumn.bind(right, animate, limit)
         caseColumn.bind(case, animate)
         // The combined reading shows the lower bud, like iOS, and only counts as charging if both are.
-        val combined = batteries.combinedBudsBattery()
-        budsColumn.bind(combined, animate)
+        // A bud held at the limit is still on charge, so the bolt stays (as on iOS).
+        val onCharge = setOf(BatteryStatus.CHARGING, BatteryStatus.OPTIMIZED_CHARGING)
+        val combined = batteries.combinedBudsBattery()?.let {
+            if (left?.status in onCharge && right?.status in onCharge) it.copy(status = BatteryStatus.CHARGING) else it
+        }
+        budsColumn.bind(combined, animate, limit)
     }
 
     private fun Battery.isAvailable() = hasReportedLevel()
@@ -653,14 +664,15 @@ class PopupWindow(
             }
         }
 
-        fun bind(battery: Battery?, animate: Boolean) {
+        fun bind(battery: Battery?, animate: Boolean, limit: Int? = null) {
             val reporting = battery != null && battery.isAvailable()
-            val charging = reporting && battery.status == BatteryStatus.CHARGING
+            val charging = reporting &&
+                (battery.status == BatteryStatus.CHARGING || battery.status == BatteryStatus.OPTIMIZED_CHARGING)
             val percent = if (reporting) battery.level else 0
             available = reporting
             if (!reporting) level.text = withSymbol("–")
             ring.setCharging(charging, animate)
-            ring.setLevel(percent, batteryColor, textColor, animate)
+            ring.setLevel(percent, batteryColor, textColor, animate, limit = limit.takeIf { reporting })
             view.contentDescription = when {
                 !reporting -> context.getString(R.string.popup_battery_unavailable, labelText)
                 charging -> context.getString(R.string.popup_battery_charging, labelText, percent)
@@ -783,6 +795,8 @@ class PopupWindow(
         const val OPTIMIZED_CARD_BOTTOM_DP = 203.5f
         const val OPTIMIZED_BUTTON_SIDE_FRACTION = 0.125f
         const val OPTIMIZED_REVEAL_DELAY_MS = 700L
+        /** The level AirPods stop at under Optimized Charge Limit. */
+        const val OPTIMIZED_LIMIT = 80
         const val OPTIMIZED_RESIZE_MS = 400L
         const val LEVEL_BASELINE_DP = 21.5f
 

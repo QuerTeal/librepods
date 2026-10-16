@@ -303,8 +303,11 @@ class AirPodsService : Service(), SharedPreferences.OnSharedPreferenceChangeList
 
         const val CHARGE_FULLY_PENDING_KEY = "charge_fully_pending"
         private const val OPTIMIZED_LIMIT_SEEN_KEY = "optimized_charge_limit_seen"
-        /** The buds hold at about 80 % under the Optimized Charge Limit. */
-        val OPTIMIZED_LIMIT_RANGE = 78..84
+        /**
+         * The buds hold at about 80 % under the Optimized Charge Limit, drifting a few percent under
+         * it between top-ups (77 % seen while held); iOS then rings the level up to the limit mark.
+         */
+        val OPTIMIZED_LIMIT_RANGE = 70..84
         const val HEART_RATE_ALERT_KEY = "heart_rate_alert"
         const val HEART_RATE_ALERT_THRESHOLD_KEY = "heart_rate_alert_threshold"
         private const val HEART_RATE_ALERT_CHANNEL = "heart_rate_alert"
