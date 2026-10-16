@@ -22,11 +22,8 @@ import android.Manifest
 import android.content.pm.PackageManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -47,6 +44,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -181,12 +179,18 @@ private fun HeartRateCard(heartRate: HeartRateState) {
     val latest = heartRate.latest
     val beating = heartRate.status == HeartRateStatus.ACTIVE && latest != null
     val period = latest?.bpm?.let { (60_000 / it).coerceIn(300, 2000) } ?: 1000
-    val pulse by rememberInfiniteTransition(label = "heartbeat").animateFloat(
-        initialValue = 1f,
-        targetValue = if (beating) 1.15f else 1f,
-        animationSpec = infiniteRepeatable(tween(period / 2, easing = FastOutSlowInEasing), RepeatMode.Reverse),
-        label = "pulse"
-    )
+    // Beat only while samples come in; an idle loop would keep redrawing the screen for nothing.
+    val pulse = remember { Animatable(1f) }
+    LaunchedEffect(beating, period) {
+        if (!beating) {
+            pulse.animateTo(1f)
+            return@LaunchedEffect
+        }
+        while (true) {
+            pulse.animateTo(1.15f, tween(period / 2, easing = FastOutSlowInEasing))
+            pulse.animateTo(1f, tween(period / 2, easing = FastOutSlowInEasing))
+        }
+    }
 
     CardSurface {
         Column(
@@ -201,7 +205,7 @@ private fun HeartRateCard(heartRate: HeartRateState) {
                 tint = if (heartRate.status == HeartRateStatus.OFF) MaterialTheme.colorScheme.onSurfaceVariant else HeartRed,
                 modifier = Modifier
                     .size(36.dp)
-                    .scale(pulse)
+                    .scale(pulse.value)
             )
             Spacer(modifier = Modifier.height(8.dp))
             Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.Center) {

@@ -45,6 +45,8 @@ class DeviceSmokeInstrumentation : Instrumentation() {
             verify("Actual activity ViewModel initialized", model.isReady)
             val service = ServiceManager.getService()!!
             await(10_000) { service.controlConnectionState.value.phase == ControlConnectionPhase.READY }
+            // Battery arrives a moment after the session is ready.
+            await(5_000) { model.uiState.value.battery.any { it.hasReportedLevel() } }
             checks += "OBSERVED connection=${service.controlConnectionState.value.phase}; reason=${service.controlConnectionState.value.reason}"
             checks += "OBSERVED battery=" + model.uiState.value.battery.joinToString { battery ->
                 "${battery.getComponentName()}:${if (battery.hasReportedLevel()) battery.level.toString() else "unknown"}/${battery.getStatusName()}"
