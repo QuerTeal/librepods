@@ -6,7 +6,8 @@
     <color name="popup_text">@color/black</color>
     <color name="popup_close_background">#08000000</color>
     <color name="popup_close_pressed">#1F000000</color>
-    <color name="popup_scrim">#66000000</color>
+    <!-- iPadOS 27 dims the screen behind the card to 40% in both appearances. -->
+    <color name="popup_scrim">#99000000</color>
     <!-- The one color every battery gauge uses (popup, main screen, island, widget). -->
     <color name="battery_level">#34C759</color>
     <color name="widget_background">#87FFFFFF</color>
@@ -17,7 +18,8 @@
     <color name="light_blue_900">#FF01579B</color>
     <color name="colorBackground">#FFFFFF</color>
     <color name="popup_secondary_text">#993C3C43</color>
-    <color name="popup_green">#248A3D</color>
-    <color name="popup_green_fill">#2634C759</color>
-    <color name="popup_green_pressed">#3334C759</color>
+    <!-- "Charge Fully Now": system green text on an 18% (dark: 24%) green capsule (iPadOS 27). -->
+    <color name="popup_green">#34C759</color>
+    <color name="popup_green_fill">#2E34C759</color>
+    <color name="popup_green_pressed">#4D34C759</color>
 </resources>

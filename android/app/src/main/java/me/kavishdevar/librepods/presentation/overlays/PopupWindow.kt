@@ -19,6 +19,7 @@
 
 package me.kavishdevar.librepods.presentation.overlays
 
+import android.animation.ValueAnimator
 import android.annotation.SuppressLint
 import android.content.BroadcastReceiver
 import android.content.Context
@@ -43,7 +44,6 @@ import android.view.WindowInsets
 import android.view.WindowManager
 import androidx.annotation.DrawableRes
 import androidx.annotation.RawRes
-import android.view.animation.LinearInterpolator
 import android.view.animation.PathInterpolator
 import android.widget.FrameLayout
 import android.widget.ImageView
@@ -81,6 +81,11 @@ import kotlin.math.roundToInt
  * apart and splits the ring into one per bud, their percentages marked L and R and the case's with
  * its symbol. Switching fades the whole content out and, after a beat, slowly back in. The renders
  * are [model]'s, and their case light glows green or amber as the real one would.
+ *
+ * While the buds are held at the Optimized Charge Limit the card says so under the rings, and once
+ * the AirPods are connected here it also offers "Charge Fully Now". As on iPadOS 27 the message and
+ * the button appear at once, moving the rings up and growing the card only for the button, while
+ * taking them away eases the card back over 0.3 s.
  */
 @SuppressLint("InflateParams")
 class PopupWindow(
@@ -88,10 +93,16 @@ class PopupWindow(
     private val onCloseCallback: () -> Unit = {},
     model: AirPodsBase? = null,
     private val observeDeviceEvents: Boolean = true,
-    /** Whether the buds are held at the Optimized Charge Limit right now. */
-    private val optimizedChargeHeld: () -> Boolean = { false },
+    /** What the card says about the Optimized Charge Limit right now. */
+    private val optimizedCharge: () -> OptimizedCharge = { OptimizedCharge.None },
     private val onChargeFully: () -> Unit = {}
 ) {
+    /**
+     * The Optimized Charge Limit message: none, the message alone while the buds are held at the
+     * limit, or with "Charge Fully Now" too once the AirPods are connected here to send it.
+     */
+    enum class OptimizedCharge { None, Message, MessageAndButton }
+
     private enum class Stage { InCase, TakenOut }
     private enum class CaseLight { Green, Amber }
 
@@ -119,13 +130,12 @@ class PopupWindow(
     private val optimizedTitle: TextView = root.findViewById(R.id.optimized_title)
     private val optimizedSubtitle: TextView = root.findViewById(R.id.optimized_subtitle)
     private val chargeFullyButton: TextView = root.findViewById(R.id.charge_fully)
-    private val optimizedViews = listOf(optimizedTitle, optimizedSubtitle, chargeFullyButton)
-    private var optimizedShown = false
-    /** The limit the buds' rings currently mark, or null for plain rings. */
-    private var ringLimit: Int? = null
-    private var openedAtMillis = 0L
-    private var heightAnimator: android.animation.ValueAnimator? = null
-    private val optimizedRunnable = Runnable { refreshOptimized() }
+    private var optimizedShown = OptimizedCharge.None
+    /** Whether the card is sized for the buds apart, whose render is a little taller. */
+    private var sizedForApart = false
+    /** What the card shows now, possibly partway to [targetLayout]. */
+    private var shownLayout: CardLayout? = null
+    private var layoutAnimator: ValueAnimator? = null
 
     private val textColor = ContextCompat.getColor(this.context, R.color.popup_text)
     /** Every ring and bolt uses this one color, whatever the level or charging state. */
@@ -154,8 +164,11 @@ class PopupWindow(
     private val autoCloseRunnable = Runnable { close() }
     private var receiver: BroadcastReceiver? = null
 
-    /** Distance the card travels between fully shown (0) and fully hidden. */
-    private var hiddenOffset = 0f
+    /** How far down the card is when the screen behind is no longer dimmed at all. */
+    private var scrimTravel = 0f
+    /** Where the dim's current run starts from (card position and dim), so it never jumps. */
+    private var scrimFromY = 0f
+    private var scrimFromAlpha = 1f
     private var dragStartTranslation = 0f
     /** Whether releasing the current drag would dismiss the card; crossing it ticks the haptics. */
     private var pastDismissPoint = false
@@ -172,12 +185,15 @@ class PopupWindow(
 
     init {
         applyFonts()
+        card.background = ContinuousRoundRectDrawable(
+            ContextCompat.getColor(this.context, R.color.popup_background), CORNER_RADIUS_DP * density)
         scrim.setOnClickListener { close() }
         root.findViewById<View>(R.id.close).setOnClickListener { close() }
         chargeFullyButton.setOnClickListener {
             onChargeFully()
-            showOptimized(false)
-            bindBatteries(animate = true)
+            val charge = optimizedCharge()
+            bindBatteries(animate = true, charge)
+            showOptimized(charge, animate = true)
             scheduleAutoClose(RESUME_DELAY_MS)
         }
 
@@ -187,6 +203,7 @@ class PopupWindow(
 
             override fun onDragStarted() {
                 translationSpring.cancel()
+                startScrim(travel = hiddenOffset(), fromY = 0f, fromAlpha = 1f)
                 dragStartTranslation = card.translationY
                 pastDismissPoint = isPastDismissPoint()
             }
@@ -231,6 +248,8 @@ class PopupWindow(
             nameView.text = name
             card.accessibilityPaneTitle = name
             budsInCaseReported = earStatus?.let(::bothInCase)
+            // A stage fade cut short by the last close may have left the content part-way.
+            content.alpha = 1f
             positionCard()
             // The card arrives already showing its levels, as on iOS.
             update(batteries, animate = false)
@@ -242,15 +261,14 @@ class PopupWindow(
 
             card.doOnLayout {
                 if (!isShowing || isClosing) return@doOnLayout
-                hiddenOffset = card.height + (card.layoutParams as FrameLayout.LayoutParams).bottomMargin + 24 * density
-                card.translationY = hiddenOffset
+                startScrim(travel = hiddenOffset(), fromY = 0f, fromAlpha = 1f)
+                card.translationY = scrimTravel
                 syncScrim()
                 animateTo(0f, 0f, OPEN_DAMPING, OPEN_STIFFNESS)
             }
 
             if (observeDeviceEvents) registerReceiver()
             scheduleAutoClose(AUTO_CLOSE_DELAY_MS)
-            openedAtMillis = android.os.SystemClock.elapsedRealtime()
         } catch (e: Exception) {
             Log.e(TAG, "Error opening popup: ${e.message}")
             pauseAutoClose()
@@ -271,52 +289,100 @@ class PopupWindow(
             if (fade) fadeToStage(newStage) else applyStage(newStage)
         }
         showCaseLight(resolveCaseLight())
-        bindBatteries(animate)
-        refreshOptimized()
+        val charge = optimizedCharge()
+        bindBatteries(animate, charge)
+        showOptimized(charge, animate)
+    }
+
+    /** Catches up with the Optimized Charge Limit, e.g. once the AirPods connect or report it. */
+    fun refreshOptimized() {
+        if (!isShowing || isClosing) return
+        val charge = optimizedCharge()
+        bindBatteries(animate = true, charge)
+        showOptimized(charge, animate = true)
     }
 
     /**
-     * Shows or hides the Optimized Charge Limit message. Like iOS, the card first arrives with
-     * just the levels and grows to add the message a moment later.
+     * Shows [charge]'s message and button. As on iPadOS 27 more of them appears at once, the rings
+     * moving up to make room, while less eases the card and the rings back over 0.3 s; the lines
+     * and the button themselves never fade.
      */
-    fun refreshOptimized() {
-        autoCloseHandler.removeCallbacks(optimizedRunnable)
-        if (!isShowing || isClosing) return
-        val want = optimizedChargeHeld()
-        if ((OPTIMIZED_LIMIT.takeIf { want }) != ringLimit) bindBatteries(animate = true)
-        if (want == optimizedShown) return
-        val wait = OPTIMIZED_REVEAL_DELAY_MS - (android.os.SystemClock.elapsedRealtime() - openedAtMillis)
-        if (want && wait > 0) {
-            autoCloseHandler.postDelayed(optimizedRunnable, wait)
-            return
-        }
-        showOptimized(want)
+    private fun showOptimized(charge: OptimizedCharge, animate: Boolean) {
+        if (charge == optimizedShown && shownLayout != null) return
+        val fewer = charge.ordinal < optimizedShown.ordinal
+        if (charge != optimizedShown) Log.i(TAG, "Optimized Charge Limit message: $charge")
+        optimizedShown = charge
+        optimizedTitle.isVisible = charge != OptimizedCharge.None
+        optimizedSubtitle.isVisible = charge != OptimizedCharge.None
+        chargeFullyButton.isVisible = charge == OptimizedCharge.MessageAndButton
+        relayout(animate = animate && fewer && isShowing)
     }
 
-    private fun showOptimized(show: Boolean) {
-        if (show == optimizedShown) return
-        optimizedShown = show
-        Log.i(TAG, "Optimized Charge Limit message ${if (show) "shown" else "hidden"}")
-        val compact = context.resources.getDimensionPixelSize(R.dimen.popup_card_height)
-        val expanded = ((RING_CENTER_Y_IN_CASE_DP + OPTIMIZED_CARD_BOTTOM_DP) * density).roundToInt()
-        heightAnimator?.cancel()
-        heightAnimator = android.animation.ValueAnimator.ofInt(card.height.takeIf { it > 0 } ?: compact,
-            if (show) expanded else compact).apply {
-            duration = OPTIMIZED_RESIZE_MS
-            interpolator = android.view.animation.PathInterpolator(0.2f, 0f, 0f, 1f)
-            addUpdateListener { card.updateLayoutParams<FrameLayout.LayoutParams> { height = it.animatedValue as Int } }
+    /**
+     * Card height and where its parts sit, in dp: the content (renders, rings and percentages) is
+     * moved by [contentShift]; [messageBottom] is where the second line's ink ends and [buttonTop]
+     * the top of the button, both from the card's top.
+     */
+    private data class CardLayout(val height: Float, val contentShift: Float, val messageBottom: Float, val buttonTop: Float) {
+        fun lerp(to: CardLayout, t: Float) = CardLayout(
+            height + (to.height - height) * t,
+            contentShift + (to.contentShift - contentShift) * t,
+            messageBottom + (to.messageBottom - messageBottom) * t,
+            buttonTop + (to.buttonTop - buttonTop) * t
+        )
+    }
+
+    /**
+     * The card as iPadOS 27 lays it out (measured from recordings): the title stays put, the
+     * message and button keep to the bottom, and the content is centered between them. Only the
+     * button makes the card taller, a little more with the buds apart.
+     */
+    private fun targetLayout(): CardLayout {
+        val withButton = optimizedShown == OptimizedCharge.MessageAndButton
+        val height = when {
+            withButton && sizedForApart -> EXPANDED_HEIGHT_DP + APART_EXTRA_DP
+            withButton -> EXPANDED_HEIGHT_DP
+            else -> CARD_HEIGHT_DP
+        }
+        val bottomBlock = when (optimizedShown) {
+            OptimizedCharge.None -> 0f
+            OptimizedCharge.Message -> MESSAGE_BLOCK_DP
+            OptimizedCharge.MessageAndButton -> MESSAGE_AND_BUTTON_BLOCK_DP
+        }
+        return CardLayout(
+            height = height,
+            contentShift = (height - CARD_HEIGHT_DP - bottomBlock) / 2f,
+            messageBottom = height - if (withButton) MESSAGE_ABOVE_BUTTON_DP else MESSAGE_BOTTOM_DP,
+            buttonTop = height - BUTTON_TOP_FROM_BOTTOM_DP
+        )
+    }
+
+    private fun relayout(animate: Boolean) {
+        val target = targetLayout()
+        val from = shownLayout
+        layoutAnimator?.cancel()
+        layoutAnimator = null
+        if (!animate || from == null || from == target) {
+            showLayout(target)
+            return
+        }
+        layoutAnimator = ValueAnimator.ofFloat(0f, 1f).apply {
+            duration = LAYOUT_MS
+            interpolator = EASE_IN_OUT
+            addUpdateListener { showLayout(from.lerp(target, it.animatedValue as Float)) }
             start()
         }
-        optimizedViews.forEach { view ->
-            view.animate().cancel()
-            if (show) {
-                view.visibility = View.VISIBLE
-                view.animate().alpha(1f).setStartDelay(OPTIMIZED_RESIZE_MS / 2).setDuration(OPTIMIZED_RESIZE_MS).start()
-            } else {
-                view.animate().alpha(0f).setStartDelay(0).setDuration(OPTIMIZED_RESIZE_MS / 2)
-                    .withEndAction { if (!optimizedShown) view.visibility = View.GONE }.start()
-            }
-        }
+    }
+
+    private fun showLayout(layout: CardLayout) {
+        shownLayout = layout
+        card.updateLayoutParams<FrameLayout.LayoutParams> { height = (layout.height * density).roundToInt() }
+        content.translationY = layout.contentShift * density
+        // The lines are placed by their baselines, set LINE_BASELINE_DP from their tops.
+        val secondBaseline = layout.messageBottom - INK_BELOW_BASELINE_DP
+        optimizedSubtitle.translationY = (secondBaseline - LINE_BASELINE_DP) * density
+        optimizedTitle.translationY = (secondBaseline - LINE_PITCH_DP - LINE_BASELINE_DP) * density
+        chargeFullyButton.translationY = layout.buttonTop * density
     }
 
     fun updateBatteryStatus(batteryNotification: AirPodsNotifications.BatteryNotification) {
@@ -329,11 +395,14 @@ class PopupWindow(
         pauseAutoClose()
         unregisterReceiver()
 
-        if (hiddenOffset == 0f) {
+        if (scrimTravel == 0f) {
             removeFromWindow()
             return
         }
-        animateTo(hiddenOffset, velocityY.coerceAtLeast(0f), SpringForce.DAMPING_RATIO_NO_BOUNCY, CLOSE_STIFFNESS) {
+        // iPadOS 27 aims the card well past the bottom edge with the same spring it came up on, so
+        // it is gone in about 0.14 s while the screen behind brightens over about 0.35 s.
+        startScrim(travel = hiddenOffset() * CLOSE_OVERSHOOT, fromY = card.translationY, fromAlpha = scrim.alpha)
+        animateTo(scrimTravel, velocityY.coerceAtLeast(0f), CLOSE_DAMPING, CLOSE_STIFFNESS) {
             removeFromWindow()
         }
     }
@@ -352,31 +421,42 @@ class PopupWindow(
         budsInCaseReported?.let { return if (it) Stage.InCase else Stage.TakenOut }
         val left = batteries.find { it.component == BatteryComponent.LEFT }
         val right = batteries.find { it.component == BatteryComponent.RIGHT }
-        return if (left?.status == BatteryStatus.CHARGING && right?.status == BatteryStatus.CHARGING) {
-            Stage.InCase
-        } else {
-            Stage.TakenOut
-        }
+        // Buds held at the Optimized Charge Limit report that instead of charging; they're still in.
+        return if (left?.status in ON_CHARGE && right?.status in ON_CHARGE) Stage.InCase else Stage.TakenOut
     }
 
     /**
      * As on iOS, nothing slides: the content fades out, the layout changes while it is blank, and
-     * after a beat it fades slowly back in. A change during the fade picks up from where it is.
+     * it fades slowly back in. The card makes room for the taller content as soon as the switch
+     * starts and fits the new one once it is in. A change during the fade picks up from where it is.
      */
     private fun fadeToStage(stage: Stage) {
         content.animate().cancel()
+        if (stage == Stage.TakenOut && !sizedForApart) {
+            sizedForApart = true
+            relayout(animate = false)
+        }
         content.animate().alpha(0f)
-            .setStartDelay(0).setDuration(FADE_OUT_MS).setInterpolator(LinearInterpolator())
+            .setStartDelay(0).setDuration(FADE_OUT_MS).setInterpolator(EASE_IN_OUT)
             .withEndAction {
-                applyStage(stage)
+                applyStage(stage, resize = false)
                 content.animate().alpha(1f)
                     .setStartDelay(BLANK_MS).setDuration(FADE_IN_MS).setInterpolator(EASE_IN_OUT)
+                    .withEndAction { fitStage() }
                     .start()
             }
             .start()
     }
 
-    private fun applyStage(stage: Stage) {
+    /** Sizes the card for the stage now showing. */
+    private fun fitStage() {
+        val apart = stage == Stage.TakenOut
+        if (apart == sizedForApart) return
+        sizedForApart = apart
+        relayout(animate = false)
+    }
+
+    private fun applyStage(stage: Stage, resize: Boolean = true) {
         val inCase = stage == Stage.InCase
         // Only the in-case render moves; it plays while it is on screen and holds still otherwise.
         if (inCase) caseAnimation?.start() else caseAnimation?.stop()
@@ -389,6 +469,7 @@ class PopupWindow(
         caseColumn.symbol = if (inCase) null else CASE_SYMBOL
         columns.forEach { it.place(inCase) }
         bindBatteries(animate = false)
+        if (resize) fitStage()
     }
 
     /**
@@ -400,7 +481,7 @@ class PopupWindow(
         val case = batteries.find { it.component == BatteryComponent.CASE }
         val buds = batteries.filter { it.component == BatteryComponent.LEFT || it.component == BatteryComponent.RIGHT }
         // Both are inside while the popup shows them in the case; otherwise only a bud in the case charges.
-        val inside = if (stage == Stage.InCase) buds else buds.filter { it.status == BatteryStatus.CHARGING }
+        val inside = if (stage == Stage.InCase) buds else buds.filter { it.status in ON_CHARGE }
         val shown = inside.ifEmpty { listOfNotNull(case) }
         val amber = shown.any { !it.isAvailable() || it.level < FULL_CHARGE_PERCENT }
         return if (amber) CaseLight.Amber else CaseLight.Green
@@ -430,8 +511,7 @@ class PopupWindow(
     }
 
     private fun removeFromWindow() {
-        autoCloseHandler.removeCallbacks(optimizedRunnable)
-        heightAnimator?.cancel()
+        layoutAnimator?.cancel()
         content.animate().cancel()
         caseAnimation?.stop()
         caseAnimation = null
@@ -445,6 +525,9 @@ class PopupWindow(
             isShowing = false
             isClosing = false
             stage = null
+            shownLayout = null
+            optimizedShown = OptimizedCharge.None
+            scrimTravel = 0f
             onCloseCallback()
         }
     }
@@ -476,8 +559,22 @@ class PopupWindow(
 
     /** The screen behind dims as far as the card has come up. */
     private fun syncScrim() {
-        if (hiddenOffset <= 0f) return
-        scrim.alpha = (1f - card.translationY / hiddenOffset).coerceIn(0f, 1f)
+        val span = scrimTravel - scrimFromY
+        if (span <= 0f) return
+        scrim.alpha = (scrimFromAlpha * (1f - (card.translationY - scrimFromY) / span)).coerceIn(0f, 1f)
+    }
+
+    /** From [fromY], where the dim is [fromAlpha], it clears linearly by [travel]. */
+    private fun startScrim(travel: Float, fromY: Float, fromAlpha: Float) {
+        scrimTravel = travel
+        scrimFromY = fromY
+        scrimFromAlpha = fromAlpha
+    }
+
+    /** How far the card moves down to be out of sight, with a little to spare. */
+    private fun hiddenOffset(): Float {
+        val height = shownLayout?.let { it.height * density } ?: card.height.toFloat()
+        return height + (card.layoutParams as FrameLayout.LayoutParams).bottomMargin + HIDDEN_GAP_DP * density
     }
 
     private fun isPastDismissPoint() = card.translationY > card.height * DISMISS_FRACTION
@@ -528,34 +625,31 @@ class PopupWindow(
             column.topTakenOut = (RING_CENTER_Y_APART_DP * density - ringSize / 2).roundToInt()
         }
 
-        // The Optimized Charge Limit lines and button, measured from the ring centre (iPadOS 27).
-        optimizedTitle.firstBaselineToTopHeight = ((RING_CENTER_Y_IN_CASE_DP + OPTIMIZED_TITLE_BASELINE_DP) * density).roundToInt()
-        optimizedSubtitle.firstBaselineToTopHeight = ((RING_CENTER_Y_IN_CASE_DP + OPTIMIZED_SUBTITLE_BASELINE_DP) * density).roundToInt()
+        // "Charge Fully Now" spans the middle three quarters of the card; showLayout places it.
         chargeFullyButton.updateLayoutParams<FrameLayout.LayoutParams> {
-            topMargin = ((RING_CENTER_Y_IN_CASE_DP + OPTIMIZED_BUTTON_TOP_DP) * density).roundToInt()
             val side = (cardWidth * OPTIMIZED_BUTTON_SIDE_FRACTION).roundToInt()
             leftMargin = side
             rightMargin = side
         }
     }
 
-    private fun bindBatteries(animate: Boolean) {
+    private fun bindBatteries(animate: Boolean, charge: OptimizedCharge = optimizedCharge()) {
         val left = batteries.find { it.component == BatteryComponent.LEFT }
         val right = batteries.find { it.component == BatteryComponent.RIGHT }
         val case = batteries.find { it.component == BatteryComponent.CASE }
-        // The buds' rings mark the Optimized Charge Limit while they're held at it.
-        val limit = OPTIMIZED_LIMIT.takeIf { optimizedChargeHeld() }
-        ringLimit = limit
-        leftColumn.bind(left, animate, limit)
-        rightColumn.bind(right, animate, limit)
+        // While the buds are held at the Optimized Charge Limit, each one on charge marks it on its
+        // ring; one taken out shows a plain ring, as on iPadOS 27.
+        val held = charge != OptimizedCharge.None
+        fun limitFor(bud: Battery?) = OPTIMIZED_LIMIT.takeIf { held && bud?.status in ON_CHARGE }
+        leftColumn.bind(left, animate, limitFor(left))
+        rightColumn.bind(right, animate, limitFor(right))
         caseColumn.bind(case, animate)
         // The combined reading shows the lower bud, like iOS, and only counts as charging if both are.
         // A bud held at the limit is still on charge, so the bolt stays (as on iOS).
-        val onCharge = setOf(BatteryStatus.CHARGING, BatteryStatus.OPTIMIZED_CHARGING)
         val combined = batteries.combinedBudsBattery()?.let {
-            if (left?.status in onCharge && right?.status in onCharge) it.copy(status = BatteryStatus.CHARGING) else it
+            if (left?.status in ON_CHARGE && right?.status in ON_CHARGE) it.copy(status = BatteryStatus.CHARGING) else it
         }
-        budsColumn.bind(combined, animate, limit)
+        budsColumn.bind(combined, animate, OPTIMIZED_LIMIT.takeIf { held })
     }
 
     private fun Battery.isAvailable() = hasReportedLevel()
@@ -565,10 +659,13 @@ class PopupWindow(
         columns.forEach { it.level.typeface = AppFonts.typeface(context, 400) }
         optimizedTitle.typeface = AppFonts.typeface(context, 600)
         optimizedSubtitle.typeface = AppFonts.typeface(context, 400)
-        chargeFullyButton.typeface = AppFonts.typeface(context, 600)
+        // Bold, which in iOS's recordings sets the label a touch heavier than the message above it.
+        chargeFullyButton.typeface = AppFonts.typeface(context, 700)
         // The baseline offsets were worked out for the inflated font; redo them for these.
         nameView.firstBaselineToTopHeight = (TITLE_BASELINE_DP * density).roundToInt()
         columns.forEach { it.level.firstBaselineToTopHeight = (LEVEL_BASELINE_DP * density).roundToInt() }
+        optimizedTitle.firstBaselineToTopHeight = (LINE_BASELINE_DP * density).roundToInt()
+        optimizedSubtitle.firstBaselineToTopHeight = (LINE_BASELINE_DP * density).roundToInt()
     }
 
     private fun scheduleAutoClose(delayMs: Long) {
@@ -669,6 +766,7 @@ class PopupWindow(
             val charging = reporting &&
                 (battery.status == BatteryStatus.CHARGING || battery.status == BatteryStatus.OPTIMIZED_CHARGING)
             val percent = if (reporting) battery.level else 0
+            if (available && !reporting && isShowing) Log.i(TAG, "$labelText stopped reporting: $battery")
             available = reporting
             if (!reporting) level.text = withSymbol("–")
             ring.setCharging(charging, animate)
@@ -782,23 +880,41 @@ class PopupWindow(
         const val FULL_CHARGE_PERCENT = 95
 
         // Card geometry, measured from iPadOS 27 (points taken as dp).
+        const val CARD_HEIGHT_DP = 400f
+        /** iOS continuous corners (the curve UIKit draws), fitted to the recordings' card. */
+        const val CORNER_RADIUS_DP = 13.5f
         const val CARD_INSET_DP = 6f
         const val MAX_CARD_WIDTH_DP = 440f
         const val BUTTON_NAV_MIN_DP = 32f
         const val TITLE_BASELINE_DP = 61f
         const val RING_CENTER_Y_IN_CASE_DP = 277.5f
         const val RING_CENTER_Y_APART_DP = 280f
-        // Optimized Charge Limit, below the ring centre (measured on iPadOS 27).
-        const val OPTIMIZED_TITLE_BASELINE_DP = 79f
-        const val OPTIMIZED_SUBTITLE_BASELINE_DP = 100.5f
-        const val OPTIMIZED_BUTTON_TOP_DP = 121f
-        const val OPTIMIZED_CARD_BOTTOM_DP = 203.5f
+        const val LEVEL_BASELINE_DP = 21.5f
+
+        // Optimized Charge Limit (iPadOS 27). The button makes the card 437 tall (441.5 with the
+        // buds apart); the message alone fits the usual 400. The content is centered between the
+        // title and what is under it, which takes these heights from the bottom.
+        const val EXPANDED_HEIGHT_DP = 437f
+        const val APART_EXTRA_DP = 4.5f
+        const val MESSAGE_BLOCK_DP = 60.5f
+        const val MESSAGE_AND_BUTTON_BLOCK_DP = 126f
+        /** Where the second line's ink ends, from the card's bottom: alone, and above the button. */
+        const val MESSAGE_BOTTOM_DP = 37.5f
+        const val MESSAGE_ABOVE_BUTTON_DP = 103f
+        /** The button is 50 tall with 34 under it. */
+        const val BUTTON_TOP_FROM_BOTTOM_DP = 84f
         const val OPTIMIZED_BUTTON_SIDE_FRACTION = 0.125f
-        const val OPTIMIZED_REVEAL_DELAY_MS = 700L
+        /** From one line of the message to the next (15pt type). */
+        const val LINE_PITCH_DP = 20.5f
+        /** Puts the lines' Hangul ink (a little shorter in Pretendard) centered on where iOS's is. */
+        const val INK_BELOW_BASELINE_DP = 1.4f
+        /** The lines' baselines sit this far below their tops, and are moved from there. */
+        const val LINE_BASELINE_DP = 20f
         /** The level AirPods stop at under Optimized Charge Limit. */
         const val OPTIMIZED_LIMIT = 80
-        const val OPTIMIZED_RESIZE_MS = 400L
-        const val LEVEL_BASELINE_DP = 21.5f
+        val ON_CHARGE = setOf(BatteryStatus.CHARGING, BatteryStatus.OPTIMIZED_CHARGING)
+        /** Taking the message or button away eases the card back (iOS easeInOut, 0.3 s). */
+        const val LAYOUT_MS = 300L
 
 
         // SF Symbols (l.circle.fill, r.circle.fill, the AirPods Pro case) and how iOS sets them in text.
@@ -811,19 +927,27 @@ class PopupWindow(
         /** The gap after a symbol is a little wider than a space (widened only, so the line keeps its height). */
         const val SYMBOL_GAP_SCALE = 1.37f
 
-        // From an iPadOS 27 recording: a quick fade out, a beat of nothing, then a slow fade in.
-        const val FADE_OUT_MS = 250L
-        const val BLANK_MS = 250L
-        const val FADE_IN_MS = 750L
+        // From iPadOS 27 recordings: an easeInOut fade out, a moment of nothing, then a slow easeInOut
+        // fade in, which together take about 1.36 s.
+        const val FADE_OUT_MS = 320L
+        const val BLANK_MS = 40L
+        const val FADE_IN_MS = 1000L
 
         const val MAX_OVERSCROLL_DP = 28f
         const val FLING_VELOCITY_DP = 900f
         const val DISMISS_FRACTION = 0.3f
-        const val OPEN_DAMPING = 0.86f
+        // iPadOS 27 moves the card on a critically damped spring of about 0.32 s (fitted to within
+        // half a point), both up from the bottom edge and away.
+        const val OPEN_DAMPING = SpringForce.DAMPING_RATIO_NO_BOUNCY
         const val OPEN_STIFFNESS = 400f
         const val SETTLE_DAMPING = 0.75f
         const val SETTLE_STIFFNESS = 500f
-        const val CLOSE_STIFFNESS = 800f
+        const val CLOSE_DAMPING = SpringForce.DAMPING_RATIO_NO_BOUNCY
+        const val CLOSE_STIFFNESS = 400f
+        /** The card is sent this much further than out of sight, so it leaves without slowing. */
+        const val CLOSE_OVERSHOOT = 1.25f
+        /** The card starts and ends this far below the bottom edge. */
+        const val HIDDEN_GAP_DP = 24f
         val EASE_IN_OUT = PathInterpolator(0.42f, 0f, 0.58f, 1f)
         val THRESHOLD_ACTIVATE = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
             HapticFeedbackConstants.GESTURE_THRESHOLD_ACTIVATE

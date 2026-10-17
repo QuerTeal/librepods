@@ -1917,7 +1917,7 @@ class AirPodsService : Service(), SharedPreferences.OnSharedPreferenceChangeList
                     popupShown = false
                 }
             }, model = airpodsInstance?.model,
-                optimizedChargeHeld = ::optimizedChargeHeld, onChargeFully = ::chargeFullyNow)
+                optimizedCharge = ::optimizedChargeState, onChargeFully = ::chargeFullyNow)
             popupWindow = created
             created.open(name, batteryNotification, earStatus)
             popupShown = created.isOpen
@@ -1926,21 +1926,29 @@ class AirPodsService : Service(), SharedPreferences.OnSharedPreferenceChangeList
     }
 
     /**
-     * The buds sit in the case, charging, held at the Optimized Charge Limit (about 80 %). iOS then
-     * says so in the case popup and offers to charge fully. Only while connected here, since
-     * charging fully goes through this phone's control connection.
+     * What the case popup says about the Optimized Charge Limit. Like iPadOS 27 it tells that the
+     * buds are held at the limit (about 80 %) as soon as the case's own report shows it, and offers
+     * to charge fully once the AirPods are connected here, since that goes through this phone's
+     * control connection. A bud taken out doesn't count; one still charging in the case keeps it.
      */
-    fun optimizedChargeHeld(): Boolean {
-        if (connectionCoordinator.state.phase != ControlConnectionPhase.READY) return false
-        if (sharedPreferences.getBoolean(CHARGE_FULLY_PENDING_KEY, false)) return false
+    fun optimizedChargeState(): PopupWindow.OptimizedCharge {
+        if (sharedPreferences.getBoolean(CHARGE_FULLY_PENDING_KEY, false)) return PopupWindow.OptimizedCharge.None
+        // Cleared while disconnected, when the last value the buds reported stands in.
         val reported = aacpManager.getControlCommandStatus(
             AACPManager.Companion.ControlCommandIdentifiers.DYNAMIC_END_OF_CHARGE)?.value?.firstOrNull()
         val limitOn = reported?.let { it == 0x01.toByte() } ?: sharedPreferences.getBoolean(OPTIMIZED_LIMIT_SEEN_KEY, false)
-        if (!limitOn) return false
-        val buds = batteryNotification.getBattery().filter { it.component != BatteryComponent.CASE }
-        if (buds.any { it.status == BatteryStatus.OPTIMIZED_CHARGING }) return true
-        return buds.size == 2 && buds.all {
-            it.hasReportedLevel() && it.status == BatteryStatus.CHARGING && it.level in OPTIMIZED_LIMIT_RANGE
+        if (!limitOn) return PopupWindow.OptimizedCharge.None
+        val onCharge = batteryNotification.getBattery().filter {
+            it.component != BatteryComponent.CASE && it.hasReportedLevel() &&
+                (it.status == BatteryStatus.CHARGING || it.status == BatteryStatus.OPTIMIZED_CHARGING)
+        }
+        val held = onCharge.isNotEmpty() && onCharge.all {
+            it.status == BatteryStatus.OPTIMIZED_CHARGING || it.level in OPTIMIZED_LIMIT_RANGE
+        }
+        return when {
+            !held -> PopupWindow.OptimizedCharge.None
+            connectionCoordinator.state.phase == ControlConnectionPhase.READY -> PopupWindow.OptimizedCharge.MessageAndButton
+            else -> PopupWindow.OptimizedCharge.Message
         }
     }
 
@@ -3334,6 +3342,8 @@ class AirPodsService : Service(), SharedPreferences.OnSharedPreferenceChangeList
         stopRecording()
         _controlConnectionState.value = connectionCoordinator.state
         updateNotificationContent(false)
+        // Without the connection the popup can no longer offer to charge fully.
+        popupWindow?.refreshOptimized()
         sendBroadcast(Intent(AirPodsNotifications.AIRPODS_DISCONNECTED).apply {
             putExtra("session_id", session.id)
             setPackage(packageName)

@@ -22,7 +22,6 @@
         android:layout_width="match_parent"
         android:layout_height="@dimen/popup_card_height"
         android:layout_gravity="bottom|center_horizontal"
-        android:background="@drawable/popup_shape"
         android:clickable="true"
         android:clipChildren="false"
         android:focusable="false"
@@ -106,20 +105,19 @@
                 layout="@layout/popup_battery_column" />
         </FrameLayout>
 
-        <!-- Optimized Charge Limit, as iOS shows it under the rings while the buds are held at the
-             limit: two lines and a tinted "Charge Fully Now" button. Placed by PopupWindow. -->
+        <!-- Optimized Charge Limit, as iPadOS 27 shows it under the rings while the buds are held at
+             the limit: two grey lines (15pt, semibold then regular) and, once the AirPods are
+             connected here, a tinted "Charge Fully Now" capsule. Placed by PopupWindow. -->
         <TextView
             android:id="@+id/optimized_title"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_gravity="top|center_horizontal"
-            android:alpha="0"
             android:gravity="center"
             android:includeFontPadding="false"
             android:text="@string/optimized_charge_popup_title"
-            android:textColor="@color/popup_text"
-            android:textSize="17sp"
-            android:textStyle="bold"
+            android:textColor="@color/popup_secondary_text"
+            android:textSize="15sp"
             android:visibility="gone" />
 
         <TextView
@@ -127,27 +125,24 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_gravity="top|center_horizontal"
-            android:alpha="0"
             android:gravity="center"
             android:includeFontPadding="false"
             android:text="@string/optimized_charge_popup_subtitle"
             android:textColor="@color/popup_secondary_text"
-            android:textSize="17sp"
+            android:textSize="15sp"
             android:visibility="gone" />
 
         <TextView
             android:id="@+id/charge_fully"
             android:layout_width="match_parent"
-            android:layout_height="49dp"
+            android:layout_height="50dp"
             android:layout_gravity="top|center_horizontal"
-            android:alpha="0"
             android:background="@drawable/popup_tinted_button"
             android:gravity="center"
             android:includeFontPadding="false"
             android:text="@string/charge_fully_now"
             android:textColor="@color/popup_green"
-            android:textSize="17sp"
-            android:textStyle="bold"
+            android:textSize="15sp"
             android:visibility="gone" />
     </me.kavishdevar.librepods.presentation.overlays.PopupCardLayout>
 </FrameLayout>

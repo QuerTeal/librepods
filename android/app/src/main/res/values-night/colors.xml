@@ -11,6 +11,6 @@
     <color name="colorBackground">#0B0B0B</color>
     <color name="popup_secondary_text">#99EBEBF5</color>
     <color name="popup_green">#30D158</color>
-    <color name="popup_green_fill">#3330D158</color>
-    <color name="popup_green_pressed">#4430D158</color>
+    <color name="popup_green_fill">#3D30D158</color>
+    <color name="popup_green_pressed">#5C30D158</color>
 </resources>

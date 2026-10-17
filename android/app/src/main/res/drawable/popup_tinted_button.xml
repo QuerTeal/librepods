@@ -1,10 +1,18 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- iOS tinted button: a capsule of the tint at low opacity, with a pressed state. -->
-<ripple xmlns:android="http://schemas.android.com/apk/res/android" android:color="@color/popup_green_pressed">
+<!-- iOS tinted button: a capsule of the tint at low opacity that deepens while pressed, without a
+     ripple. -->
+<selector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:exitFadeDuration="@android:integer/config_shortAnimTime">
+    <item android:state_pressed="true">
+        <shape android:shape="rectangle">
+            <corners android:radius="25dp" />
+            <solid android:color="@color/popup_green_pressed" />
+        </shape>
+    </item>
     <item>
         <shape android:shape="rectangle">
-            <corners android:radius="24.5dp" />
+            <corners android:radius="25dp" />
             <solid android:color="@color/popup_green_fill" />
         </shape>
     </item>
-</ripple>
+</selector>
